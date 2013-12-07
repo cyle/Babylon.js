@@ -1,4 +1,6 @@
-﻿var BABYLON = BABYLON || {};
+﻿"use strict";
+
+var BABYLON = BABYLON || {};
 
 (function () {
     BABYLON.StandardMaterial = function (name, scene) {
@@ -134,6 +136,10 @@
             var light = this._scene.lights[index];
 
             if (!light.isEnabled()) {
+                continue;
+            }
+
+            if (mesh && light.excludedMeshes.indexOf(mesh) !== -1) {
                 continue;
             }
 
@@ -345,6 +351,10 @@
             var light = this._scene.lights[index];
 
             if (!light.isEnabled()) {
+                continue;
+            }
+            
+            if (mesh && light.excludedMeshes.indexOf(mesh) !== -1) {
                 continue;
             }
 
