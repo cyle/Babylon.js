@@ -140,7 +140,7 @@ var BABYLON = BABYLON || {};
     };
 
     BABYLON.Mesh.prototype.getPivotMatrix = function () {
-        return this._localMatrix;
+        return this._pivotMatrix;
     };
 
     BABYLON.Mesh.prototype.isSynchronized = function () {
@@ -295,14 +295,17 @@ var BABYLON = BABYLON || {};
             this._localPivotScalingRotation.multiplyToRef(this._localBillboard, this._localWorld);
             this._rotateYByPI.multiplyToRef(this._localWorld, this._localPivotScalingRotation);
         }
+        
+        // Local world
+        this._localPivotScalingRotation.multiplyToRef(this._localTranslation, this._localWorld);
 
         // Parent
         if (this.parent && this.parent.getWorldMatrix && this.billboardMode === BABYLON.Mesh.BILLBOARDMODE_NONE) {
-            this._localPivotScalingRotation.multiplyToRef(this._localTranslation, this._localWorld);
-            var parentWorld = this.parent.getWorldMatrix();
-
-            this._localWorld.multiplyToRef(parentWorld, this._worldMatrix);
+            this._localWorld.multiplyToRef(this.parent.getWorldMatrix(), this._worldMatrix);
         } else {
+            // multiplyToRef instead of this._worldMatrix = this._localWorld;
+            // to be sure not to have a bug with a call to this._localWorld.multiplyToRef(this.parent.getWorldMatrix(), this._worldMatrix);
+            // Moreover multiplyToRef is more efficient than clone
             this._localPivotScalingRotation.multiplyToRef(this._localTranslation, this._worldMatrix);
         }
 
@@ -533,7 +536,9 @@ var BABYLON = BABYLON || {};
     };
 
     // Geometry
+    // deprecated: use setPositionWithLocalVector instead. It fixes setLocalTranslation.
     BABYLON.Mesh.prototype.setLocalTranslation = function(vector3) {
+        console.warn("deprecated: use setPositionWithLocalVector instead");
         this.computeWorldMatrix();
         var worldMatrix = this._worldMatrix.clone();
         worldMatrix.setTranslation(BABYLON.Vector3.Zero());
@@ -541,13 +546,35 @@ var BABYLON = BABYLON || {};
         this.position = BABYLON.Vector3.TransformCoordinates(vector3, worldMatrix);
     };
     
+    // deprecated: use getPositionExpressedInLocalSpace instead. It fixes getLocalTranslation.
     BABYLON.Mesh.prototype.getLocalTranslation = function () {
+        console.warn("deprecated: use getPositionExpressedInLocalSpace instead");
         this.computeWorldMatrix();
         var invWorldMatrix = this._worldMatrix.clone();
         invWorldMatrix.setTranslation(BABYLON.Vector3.Zero());
         invWorldMatrix.invert();
 
         return BABYLON.Vector3.TransformCoordinates(this.position, invWorldMatrix);
+    };
+    
+    BABYLON.Mesh.prototype.setPositionWithLocalVector = function(vector3) {
+        this.computeWorldMatrix();
+        
+        this.position = BABYLON.Vector3.TransformNormal(vector3, this._localWorld);
+    };
+
+    BABYLON.Mesh.prototype.getPositionExpressedInLocalSpace = function () {
+        this.computeWorldMatrix();
+        var invLocalWorldMatrix = this._localWorld.clone();
+        invLocalWorldMatrix.invert();
+
+        return BABYLON.Vector3.TransformNormal(this.position, invLocalWorldMatrix);
+    };
+    
+    BABYLON.Mesh.prototype.locallyTranslate = function(vector3) {
+        this.computeWorldMatrix();
+        
+        this.position = BABYLON.Vector3.TransformCoordinates(vector3, this._localWorld);
     };
 
     BABYLON.Mesh.prototype.bakeTransformIntoVertices = function (transform) {
@@ -800,6 +827,78 @@ var BABYLON = BABYLON || {};
         if (this.onDispose) {
             this.onDispose();
         }
+    };
+    
+    // Physics
+    BABYLON.Mesh.prototype.setPhysicsState = function(options) {
+        if (!this._scene._physicsEngine) {
+            return;
+        }
+
+        options.impostor = options.impostor || BABYLON.PhysicsEngine.NoImpostor;
+        options.mass = options.mass || 0;
+        options.friction = options.friction || 0.0;
+        options.restitution = options.restitution || 0.9;
+
+        this._physicImpostor = options.impostor;
+        this._physicsMass = options.mass;
+        this._physicsFriction = options.friction;
+        this._physicRestitution = options.restitution;
+
+        if (options.impostor === BABYLON.PhysicsEngine.NoImpostor) {
+            this._scene._physicsEngine._unregisterMesh(this);
+            return;
+        }
+        
+        this._scene._physicsEngine._registerMesh(this, options);
+    };
+
+    BABYLON.Mesh.prototype.getPhysicsImpostor = function() {
+        if (!this._physicImpostor) {
+            return BABYLON.PhysicsEngine.NoImpostor;
+        }
+
+        return this._physicImpostor;
+    };
+
+    BABYLON.Mesh.prototype.getPhysicsMass = function() {
+        if (!this._physicsMass) {
+            return 0;
+        }
+
+        return this._physicsMass;
+    };
+    
+    BABYLON.Mesh.prototype.getPhysicsFriction = function () {
+        if (!this._physicsFriction) {
+            return 0;
+        }
+
+        return this._physicsFriction;
+    };
+    
+    BABYLON.Mesh.prototype.getPhysicsRestitution = function () {
+        if (!this._physicRestitution) {
+            return 0;
+        }
+
+        return this._physicRestitution;
+    };
+
+    BABYLON.Mesh.prototype.applyImpulse = function(force, contactPoint) {
+        if (!this._physicImpostor) {
+            return;
+        }
+
+        this._scene._physicsEngine._applyImpulse(this, force, contactPoint);
+    };
+
+    BABYLON.Mesh.prototype.setPhysicsLinkWith = function(otherMesh, pivot1, pivot2) {
+        if (!this._physicImpostor) {
+            return;
+        }
+        
+        this._scene._physicsEngine._createLink(this, otherMesh, pivot1, pivot2);
     };
 
     // Statics

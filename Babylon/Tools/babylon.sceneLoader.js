@@ -1,6 +1,6 @@
-﻿"use strict";
+"use strict";
 
-var BABYLON = BABYLON || {};
+var BABYLON = BABYLON || {}; 
 
 (function () {
     var loadCubeTexture = function (rootUrl, parsedTexture, scene) {
@@ -415,6 +415,22 @@ var BABYLON = BABYLON || {};
         if (parsedMesh.skeletonId > -1) {
             mesh.skeleton = scene.getLastSkeletonByID(parsedMesh.skeletonId);
         }
+        
+        // Physics
+        if (parsedMesh.physicsImpostor) {
+            if (!scene.isPhysicsEnabled()) {
+                scene.enablePhysics();
+            }
+
+            switch (parsedMesh.physicsImpostor) {
+                case 1: // BOX
+                    mesh.setPhysicsState({ impostor: BABYLON.PhysicsEngine.BoxImpostor, mass: parsedMesh.physicsMass, friction: parsedMesh.physicsFriction, restitution: parsedMesh.physicsRestitution });
+                    break;
+                case 2: // SPHERE
+                    mesh.setPhysicsState({ impostor: BABYLON.PhysicsEngine.SphereImpostor, mass: parsedMesh.physicsMass, friction: parsedMesh.physicsFriction, restitution: parsedMesh.physicsRestitution });
+                    break;
+            }
+        }
 
         // Animations
         if (parsedMesh.animations) {
@@ -432,11 +448,14 @@ var BABYLON = BABYLON || {};
         return mesh;
     };
 
-    var isDescendantOf = function (mesh, name, hierarchyIds) {
-        if (mesh.name === name) {
-            hierarchyIds.push(mesh.id);
-            return true;
-        }
+    var isDescendantOf = function (mesh, names, hierarchyIds) {
+		names = (names instanceof Array) ? names : [names];
+		for(var i in names){
+			if (mesh.name === names[i]) {
+				hierarchyIds.push(mesh.id);
+				return true;
+			}
+		}
 
         if (mesh.parentId && hierarchyIds.indexOf(mesh.parentId) !== -1) {
             hierarchyIds.push(mesh.id);
@@ -505,7 +524,7 @@ var BABYLON = BABYLON || {};
                 scene._selectionOctree.addMesh(mesh);
             }
         },
-        ImportMesh: function (meshName, rootUrl, sceneFilename, scene, then, progressCallBack) {
+        ImportMesh: function (meshesNames, rootUrl, sceneFilename, scene, then, progressCallBack) {
             // Checking if a manifest file has been set for this scene and if offline mode has been requested
             var database = new BABYLON.Database(rootUrl + sceneFilename);
             scene.database = database;
@@ -523,7 +542,10 @@ var BABYLON = BABYLON || {};
                 for (var index = 0; index < parsedData.meshes.length; index++) {
                     var parsedMesh = parsedData.meshes[index];
 
-                    if (!meshName || isDescendantOf(parsedMesh, meshName, hierarchyIds)) {
+                    if (!meshesNames || isDescendantOf(parsedMesh, meshesNames, hierarchyIds)) {
+						// Remove found mesh name from list.
+						delete meshesNames[meshesNames.indexOf(parsedMesh.name)];
+						
                         // Material ?
                         if (parsedMesh.materialId) {
                             var materialFound = (loadedMaterialsIds.indexOf(parsedMesh.materialId) !== -1);
