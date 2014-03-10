@@ -1,5 +1,48 @@
-﻿Changes list
+Changes list
 ============
+- 1.9.0:
+ - **Major updates**
+ - Beta support for scene serialization with ```BABYLON.SceneSerializer.Serialize``` function ([deltakosh](http://www.github.com/deltakosh))
+ - Blender exporter now supports 32 bits indices ([deltakosh](http://www.github.com/deltakosh))
+ - Flat shading support (From Blender and with ```mesh.convertToFlatShadedMesh()``) ([deltakosh](http://www.github.com/deltakosh))
+ - **Updates**
+ - New ```mesh.rotate``` and ```mesh.translate``` functions to rotate and translate mesh both locally and globally ([deltakosh](http://www.github.com/deltakosh))
+ - New feature for particles: ```ParticleSystem.forceDepthWrite``` ([deltakosh](http://www.github.com/deltakosh))
+ - Adding a new parameter to pick in order to be able to pick even on multi views ([deltakosh](http://www.github.com/deltakosh))
+ - New ```mesh.lookAt``` function ([professorF](https://github.com/professorF))
+ - New postprocess system (independent from cameras) ([michael-korbas](https://github.com/michael-korbas))
+ - New ```mesh.setAbsolutePosition``` function ([gwenael-hagenmuller](https://github.com/gwenael-hagenmuller))
+ - **Bugfixes**
+ - Fixing issue with ```mesh.infiniteDistance``` ([deltakosh](http://www.github.com/deltakosh))
+ - Fixing issue with camera caches ([deltakosh](http://www.github.com/deltakosh))
+ - Fixing issue with aspect ratio ([deltakosh](http://www.github.com/deltakosh))
+ - Fixing arcRotateCamera angle limitations ([deltakosh](http://www.github.com/deltakosh))
+ - Fixing a bug with multi-views: depth buffer was not clear between different passes ([deltakosh](http://www.github.com/deltakosh))
+- 1.8.5:
+ - **Major updates**
+ - Visual Studio 2013 templates for Windows 8.1 and nuget packages ([pierlag](http://www.github.com/pierlag))
+ - **Updates**
+ - New ```matrix.multiply``` function (up to 50% faster) ([deltakosh](http://www.github.com/deltakosh))
+ - New matrices cache system for camera (view and projection matrices) ([juliengobin](http://www.github.com/juliengobin))
+ - New physics impostor: compound and mesh (still really slow) ([deltakosh](http://www.github.com/deltakosh))
+ - Set crossOrigin flag for support CORS ([vbouzon](http://www.github.com/vbouzon))
+ - XNA importer: Changes for Right-Left Coordinate Systems & Prefixed Mesh Parts with Mesh Name ([professorF](http://www.github.com/professorF))
+ - Fixing getPivotMatrix ([gwenael-hagenmuller](http://www.github.com/gwenael-hagenmuller))
+ - New geometry functions: getLocalTranslation, setPositionWithLocalVector, getPositionExpressedInLocalSpace,locallyTranslate ([gwenael-hagenmuller](http://www.github.com/gwenael-hagenmuller))
+ - Adding multi mesh import from same file([nicolas-obre](http://www.github.com/nicolas-obre)) 
+ - **Bugfixes**
+ - Fixing issue when disposing a parent and not its children ([deltakosh](http://www.github.com/deltakosh))
+ - Fixing .obj importer ([deltakosh](http://www.github.com/deltakosh))
+ - Added guardband checks for impostors' size ([deltakosh](http://www.github.com/deltakosh))
+- 1.8.0:
+ - **Major updates**
+ - Support for [physics engine](http://www.babylonjs.com/index.html?PHYSICS) thanks to cannon.js ([deltakosh](http://www.github.com/deltakosh))
+ - New [sandbox tool](http://www.babylonjs.com/sandbox/) ([davrous](http://www.github.com/davrous))
+ - **Updates**
+ - New ```animation.currentFrame``` property to get current animation frame ([deltakosh](http://www.github.com/deltakosh))
+ - New ```animation.floatInterpolateFunction``` property to define custom float interpolation function ([deltakosh](http://www.github.com/deltakosh))
+ - New ```animation.vector3InterpolateFunction``` property to define custom vector3 interpolation function ([deltakosh](http://www.github.com/deltakosh))
+ - New ```animation.quaternionInterpolateFunction``` property to define custom quaternion interpolation function ([deltakosh](http://www.github.com/deltakosh))
 - 1.7.3:
  - **Updates**
  - Support for "file://" moniker ([davrous](https://github.com/davrous))
@@ -13,7 +56,7 @@
  - Support for [lens flares](https://github.com/BabylonJS/Babylon.js/wiki/How-to-use-lens-flares) ([deltakosh](http://www.github.com/deltakosh))
  - Support for [multi-views](https://github.com/BabylonJS/Babylon.js/wiki/How-to-use-multi-views) ([deltakosh](http://www.github.com/deltakosh))
  - **Updates**
- - New ```light.excludedMeshes``` property to exclude specific meshes from light coputation ([deltakosh](http://www.github.com/deltakosh))
+ - New ```light.excludedMeshes``` property to exclude specific meshes from light computation ([deltakosh](http://www.github.com/deltakosh))
  - New ```texture.anisotropicFilteringLevel``` property to define the anisotropic level of a texture ([deltakosh](http://www.github.com/deltakosh))
  - New ```mesh.infiniteDistance``` property to make a mesh static from the point of view of the camera ([deltakosh](http://www.github.com/deltakosh))
  - New ```scene.customRenderTargets``` property to add our own renderTargetTexture ([deltakosh](http://www.github.com/deltakosh))

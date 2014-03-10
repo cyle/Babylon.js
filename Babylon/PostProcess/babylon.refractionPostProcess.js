@@ -3,15 +3,20 @@
 var BABYLON = BABYLON || {};
 
 (function () {
-    BABYLON.RefractionPostProcess = function (name, refractionTextureUrl, color, depth, colorLevel, ratio, camera, samplingMode) {
-        BABYLON.PostProcess.call(this, name, "refraction", ["baseColor", "depth", "colorLevel"], ["refractionSampler"], ratio, camera, samplingMode);
+    BABYLON.RefractionPostProcess = function (name, refractionTextureUrl, color, depth, colorLevel, ratio, camera, samplingMode, engine, reusable) {
+        BABYLON.PostProcess.call(this, name, "refraction", ["baseColor", "depth", "colorLevel"], ["refractionSampler"], ratio, camera, samplingMode, engine, reusable);
 
         this.color = color;
         this.depth = depth;
         this.colorLevel = colorLevel;
-        this._refRexture = new BABYLON.Texture(refractionTextureUrl, camera.getScene());
+        this._refRexture = null;
         
         var that = this;
+
+        this.onActivate = function (camera) {
+            that._refRexture = this._refRexture || new BABYLON.Texture(refractionTextureUrl, camera.getScene());
+        };
+
         this.onApply = function (effect) {
             effect.setColor3("baseColor", that.color);
             effect.setFloat("depth", that.depth);
@@ -25,7 +30,9 @@ var BABYLON = BABYLON || {};
     
     // Methods
     BABYLON.RefractionPostProcess.prototype._onDispose = function () {
-        this._refRexture.dispose();
+        if (this._refRexture) {
+            this._refRexture.dispose();
+        }
     };
 
 })();

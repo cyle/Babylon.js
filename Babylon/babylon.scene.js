@@ -78,7 +78,7 @@ var BABYLON = BABYLON || {};
 
         // Skeletons
         this.skeletons = [];
-        
+
         // Lens flares
         this.lensFlareSystems = [];
 
@@ -121,10 +121,6 @@ var BABYLON = BABYLON || {};
         return this._activeVertices;
     };
 
-    BABYLON.Scene.prototype.getTotalVertices = function () {
-        return this._totalVertices;
-    };
-
     BABYLON.Scene.prototype.getActiveParticles = function () {
         return this._activeParticles;
     };
@@ -136,6 +132,10 @@ var BABYLON = BABYLON || {};
 
     BABYLON.Scene.prototype.getEvaluateActiveMeshesDuration = function () {
         return this._evaluateActiveMeshesDuration;
+    };
+
+    BABYLON.Scene.prototype.getActiveMeshes = function () {
+        return this._activeMeshes;
     };
 
     BABYLON.Scene.prototype.getRenderTargetsDuration = function () {
@@ -249,6 +249,7 @@ var BABYLON = BABYLON || {};
         if (speedRatio === undefined) {
             speedRatio = 1.0;
         }
+
         // Local animations
         if (target.animations) {
             this.stopAnimation(target);
@@ -269,10 +270,21 @@ var BABYLON = BABYLON || {};
     };
 
     BABYLON.Scene.prototype.stopAnimation = function (target) {
-        for (var index = 0; index < this._activeAnimatables.length; index++) {
-            if (this._activeAnimatables[index].target === target) {
-                this._activeAnimatables.splice(index, 1);
-                return;
+        // Local animations
+        if (target.animations) {
+            for (var index = 0; index < this._activeAnimatables.length; index++) {
+                if (this._activeAnimatables[index].target === target) {
+                    this._activeAnimatables.splice(index, 1);
+                    return;
+                }
+            }
+        }
+
+        // Children animations
+        if (target.getAnimatables) {
+            var animatables = target.getAnimatables();
+            for (var index = 0; index < animatables.length; index++) {
+                this.stopAnimation(animatables[index]);
             }
         }
     };
@@ -395,7 +407,7 @@ var BABYLON = BABYLON || {};
                 return this.cameras[index];
             }
         }
-        
+
         for (var index = this.lights.length - 1; index >= 0 ; index--) {
             if (this.lights[index].id === id) {
                 return this.lights[index];
@@ -450,7 +462,7 @@ var BABYLON = BABYLON || {};
     };
 
     BABYLON.Scene.prototype._evaluateSubMesh = function (subMesh, mesh) {
-        if (mesh.subMeshes.length == 1 || subMesh.isInFrustrum(this._frustumPlanes)) {
+        if (mesh.subMeshes.length == 1 || subMesh.isInFrustum(this._frustumPlanes)) {
             var material = subMesh.getMaterial();
 
             if (material) {
@@ -504,7 +516,7 @@ var BABYLON = BABYLON || {};
                         mesh._renderId = 0;
                     }
 
-                    if (mesh._renderId === this._renderId || (mesh._renderId === 0 && mesh.isEnabled() && mesh.isVisible && mesh.visibility > 0 && mesh.isInFrustrum(this._frustumPlanes))) {
+                    if (mesh._renderId === this._renderId || (mesh._renderId === 0 && mesh.isEnabled() && mesh.isVisible && mesh.visibility > 0 && mesh.isInFrustum(this._frustumPlanes))) {
                         if (mesh._renderId === 0) {
                             this._activeMeshes.push(mesh);
                         }
@@ -542,7 +554,7 @@ var BABYLON = BABYLON || {};
 
                 mesh.computeWorldMatrix();
 
-                if (mesh.isEnabled() && mesh.isVisible && mesh.visibility > 0 && mesh.isInFrustrum(this._frustumPlanes)) {
+                if (mesh.isEnabled() && mesh.isVisible && mesh.visibility > 0 && mesh.isInFrustum(this._frustumPlanes)) {
                     this._activeMeshes.push(mesh);
 
                     if (mesh.skeleton) {
@@ -573,7 +585,7 @@ var BABYLON = BABYLON || {};
         this._particlesDuration += new Date() - beforeParticlesDate;
     };
 
-    BABYLON.Scene.prototype._renderForCamera = function (camera) {
+    BABYLON.Scene.prototype._renderForCamera = function (camera, mustClearDepth) {
         var engine = this._engine;
 
         this.activeCamera = camera;
@@ -583,6 +595,11 @@ var BABYLON = BABYLON || {};
 
         // Viewport
         engine.setViewport(this.activeCamera.viewport);
+
+        // Clear
+        if (mustClearDepth) {
+            this._engine.clear(this.clearColor, false, true);
+        }
 
         // Camera
         this._renderId++;
@@ -623,7 +640,7 @@ var BABYLON = BABYLON || {};
         // Prepare Frame
         this.postProcessManager._prepareFrame();
 
-        var beforeRenderDate = new Date();        
+        var beforeRenderDate = new Date();
         // Backgrounds
         if (this.layers.length) {
             engine.setDepthBuffer(false);
@@ -640,7 +657,7 @@ var BABYLON = BABYLON || {};
 
         // Render
         this._renderingManager.render(null, null, true, true);
-        
+
         // Lens flares
         for (var lensFlareSystemIndex = 0; lensFlareSystemIndex < this.lensFlareSystems.length; lensFlareSystemIndex++) {
             this.lensFlareSystems[lensFlareSystemIndex].render();
@@ -664,8 +681,8 @@ var BABYLON = BABYLON || {};
         this.postProcessManager._finalizeFrame();
 
         // Update camera
-        this.activeCamera._update();
-        
+        this.activeCamera._updateFromScene();
+
         // Reset some special arrays
         this._renderTargets.reset();
     };
@@ -688,14 +705,20 @@ var BABYLON = BABYLON || {};
         for (var callbackIndex = 0; callbackIndex < this._onBeforeRenderCallbacks.length; callbackIndex++) {
             this._onBeforeRenderCallbacks[callbackIndex]();
         }
-        
+
         // Animations
-        this._animationRatio = BABYLON.Tools.GetDeltaTime() * (60.0 / 1000.0);
+        var deltaTime = BABYLON.Tools.GetDeltaTime();
+        this._animationRatio = deltaTime * (60.0 / 1000.0);
         this._animate();
-        
+
+        // Physics
+        if (this._physicsEngine) {
+            this._physicsEngine._runOneStep(deltaTime / 1000.0);
+        }
+
         // Clear
         this._engine.clear(this.clearColor, this.autoClear || this.forceWireframe, true);
-        
+
         // Shadows
         for (var lightIndex = 0; lightIndex < this.lights.length; lightIndex++) {
             var light = this.lights[lightIndex];
@@ -711,7 +734,7 @@ var BABYLON = BABYLON || {};
             var currentRenderId = this._renderId;
             for (var cameraIndex = 0; cameraIndex < this.activeCameras.length; cameraIndex++) {
                 this._renderId = currentRenderId;
-                this._renderForCamera(this.activeCameras[cameraIndex]);
+                this._renderForCamera(this.activeCameras[cameraIndex], cameraIndex != 0);
             }
         } else {
             this._renderForCamera(this.activeCamera);
@@ -788,6 +811,11 @@ var BABYLON = BABYLON || {};
 
         // Post-processes
         this.postProcessManager.dispose();
+
+        // Physics
+        if (this._physicsEngine) {
+            this.disablePhysicsEngine();
+        }
 
         // Remove from engine
         index = this._engine.scenes.indexOf(this);
@@ -873,7 +901,7 @@ var BABYLON = BABYLON || {};
         for (var index = 0; index < this.meshes.length; index++) {
             var mesh = this.meshes[index];
 
-            mesh.computeWorldMatrix();
+            mesh.computeWorldMatrix(true);
             var minBox = mesh.getBoundingInfo().boundingBox.minimumWorld;
             var maxBox = mesh.getBoundingInfo().boundingBox.maximumWorld;
 
@@ -886,18 +914,17 @@ var BABYLON = BABYLON || {};
     };
 
     // Picking
-    BABYLON.Scene.prototype.createPickingRay = function (x, y, world) {
+    BABYLON.Scene.prototype.createPickingRay = function (x, y, world, camera) {
         var engine = this._engine;
 
-        if (!this._viewMatrix) {
+        if (!camera) {
             if (!this.activeCamera)
                 throw new Error("Active camera not set");
 
-            this.setTransformMatrix(this.activeCamera.getViewMatrix(), this.activeCamera.getProjectionMatrix());
+            camera = this.activeCamera;
         }
-        var viewport = this.activeCamera.viewport.toGlobal(engine);
-
-        return BABYLON.Ray.CreateNew(x, y, viewport.width, viewport.height, world ? world : BABYLON.Matrix.Identity(), this._viewMatrix, this._projectionMatrix);
+        var viewport = camera.viewport.toGlobal(engine);
+        return BABYLON.Ray.CreateNew(x, y, viewport.width, viewport.height, world ? world : BABYLON.Matrix.Identity(), camera.getViewMatrix(), camera.getProjectionMatrix());
     };
 
     BABYLON.Scene.prototype._internalPick = function (rayFunction, predicate, fastCheck) {
@@ -930,17 +957,24 @@ var BABYLON = BABYLON || {};
                 break;
             }
         }
-        
+
         return pickingInfo || new BABYLON.PickingInfo();
     };
 
-    BABYLON.Scene.prototype.pick = function (x, y, predicate, fastCheck) {
+    BABYLON.Scene.prototype.pick = function (x, y, predicate, fastCheck, camera) {
+        /// <summary>Launch a ray to try to pick a mesh in the scene</summary>
+        /// <param name="x">X position on screen</param>
+        /// <param name="y">Y position on screen</param>
+        /// <param name="predicate">Predicate function used to determine eligible meshes. Can be set to null. In this case, a mesh must be enabled, visible and with isPickable set to true</param>
+        /// <param name="fastCheck">Launch a fast check only using the bounding boxes. Can be set to null.</param>
+        /// <param name="camera">camera to use for computing the picking ray. Can be set to null. In this case, the scene.activeCamera will be used</param>
+
         var that = this;
-        return this._internalPick(function(world) {
-            return that.createPickingRay(x, y, world);
+        return this._internalPick(function (world) {
+            return that.createPickingRay(x, y, world, camera);
         }, predicate, fastCheck);
     };
-    
+
     BABYLON.Scene.prototype.pickWithRay = function (ray, predicate, fastCheck) {
         var that = this;
         return this._internalPick(function (world) {
@@ -950,6 +984,67 @@ var BABYLON = BABYLON || {};
             world.invertToRef(that._pickWithRayInverseMatrix);
             return BABYLON.Ray.Transform(ray, that._pickWithRayInverseMatrix);
         }, predicate, fastCheck);
+    };
+
+    // Physics
+    BABYLON.Scene.prototype.enablePhysics = function (gravity, iterations) {
+        if (this._physicsEngine) {
+            return true;
+        }
+
+        if (!BABYLON.PhysicsEngine.IsSupported()) {
+            return false;
+        }
+
+        this._physicsEngine = new BABYLON.PhysicsEngine(gravity, iterations || 10);
+
+        return true;
+    };
+
+    BABYLON.Scene.prototype.disablePhysicsEngine = function () {
+        if (!this._physicsEngine) {
+            return;
+        }
+
+        this._physicsEngine.dispose();
+        this._physicsEngine = undefined;
+    };
+
+    BABYLON.Scene.prototype.isPhysicsEnabled = function () {
+        return this._physicsEngine !== undefined;
+    };
+
+    BABYLON.Scene.prototype.setGravity = function (gravity) {
+        if (!this._physicsEngine) {
+            return;
+        }
+
+        this._physicsEngine._setGravity(gravity);
+    };
+
+    BABYLON.Scene.prototype.createCompoundImpostor = function (options) {
+        if (!this._physicsEngine) {
+            return null;
+        }
+
+        for (var index = 0; index < options.parts.length; index++) {
+            var mesh = options.parts[index].mesh;
+
+            mesh._physicImpostor = options.parts[index].impostor;
+            mesh._physicsMass = options.mass / options.parts.length;
+            mesh._physicsFriction = options.friction;
+            mesh._physicRestitution = options.restitution;
+        }
+
+        return this._physicsEngine._registerCompound(options);
+    };
+
+    BABYLON.Scene.prototype.deleteCompoundImpostor = function (compound) {
+        for (var index = 0; index < compound.parts.length; index++) {
+            var mesh = compound.parts[index].mesh;
+            mesh._physicImpostor = BABYLON.PhysicsEngine.NoImpostor;
+            this._scene._physicsEngine._unregisterMesh(mesh);
+        }
     };
 
     // Statics

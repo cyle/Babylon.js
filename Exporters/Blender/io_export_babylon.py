@@ -25,6 +25,8 @@ from bpy.props import (BoolProperty, FloatProperty, StringProperty, EnumProperty
 from math import radians
 from mathutils import *
 
+MAX_VERTICES = 65535
+
 class SubMesh:
     materialIndex = 0
     verticesStart = 0
@@ -117,16 +119,14 @@ class Export_babylon(bpy.types.Operator, ExportHelper):
         return (matrix.to_3x3() * mathutils.Vector((0.0, 0.0, -1.0))).normalized()
             
     def export_camera(object, scene, file_handler):     
-        invWorld = object.matrix_world.copy()
-        invWorld.invert()
-        
-        target = mathutils.Vector((0, 1, 0)) * invWorld
+        rotation = mathutils.Vector((-object.rotation_euler[0] + math.pi / 2,
+            object.rotation_euler[1], -object.rotation_euler[2]))
     
         file_handler.write("{")
         Export_babylon.write_string(file_handler, "name", object.name, True)        
         Export_babylon.write_string(file_handler, "id", object.name)
         Export_babylon.write_vector(file_handler, "position", object.location)
-        Export_babylon.write_vector(file_handler, "target", target)
+        Export_babylon.write_vector(file_handler, "rotation", rotation)
         Export_babylon.write_float(file_handler, "fov", object.data.angle)
         Export_babylon.write_float(file_handler, "minZ", object.data.clip_start)
         Export_babylon.write_float(file_handler, "maxZ", object.data.clip_end)
@@ -342,20 +342,21 @@ class Export_babylon(bpy.types.Operator, ExportHelper):
         
         file_handler.write("]}")
 
-    def export_mesh(object, scene, file_handler, multiMaterials):
+    def export_mesh(object, scene, file_handler, multiMaterials, startFace, forcedParent, nameID):
         # Get mesh  
         mesh = object.to_mesh(scene, True, "PREVIEW")
         
         # Transform
         loc = mathutils.Vector((0, 0, 0))
-        rot = mathutils.Quaternion((0, 0, 0, 1))
+        rot = mathutils.Quaternion((0, 0, 0, -1))
         scale = mathutils.Vector((1, 1, 1))
         
+        hasSkeleton = False
+
         world = object.matrix_world
         if object.parent and object.parent.type == "ARMATURE" and len(object.vertex_groups) > 0:
             hasSkeleton = True
         else:
-            hasSkeleton = False
             if (object.parent):
                 world = object.parent.matrix_world.inverted() * object.matrix_world
 
@@ -401,6 +402,8 @@ class Export_babylon(bpy.types.Operator, ExportHelper):
         vertices_Colors=[]
         vertices_indices=[]
         subMeshes = []
+
+        offsetFace = 0
                 
         for v in range(0, len(mesh.vertices)):
             alreadySavedVertices.append(False)
@@ -414,18 +417,27 @@ class Export_babylon(bpy.types.Operator, ExportHelper):
         indicesCount = 0
 
         for materialIndex in range(materialsCount):
+            if offsetFace != 0:
+                break
+
             subMeshes.append(SubMesh())
             subMeshes[materialIndex].materialIndex = materialIndex
             subMeshes[materialIndex].verticesStart = verticesCount
             subMeshes[materialIndex].indexStart = indicesCount
         
-            for face in mesh.tessfaces:  # For each face
-                
+            for faceIndex in range(startFace, len(mesh.tessfaces)):  # For each face
+                face = mesh.tessfaces[faceIndex]
+
                 if face.material_index != materialIndex:
                     continue
-                
+
+                if verticesCount + 3 > MAX_VERTICES:
+                    offsetFace = faceIndex
+                    break
+
                 for v in range(3): # For each vertex in face
                     vertex_index = face.vertices[v]
+
                     vertex = mesh.vertices[vertex_index]
                     position = vertex.co
                     normal = vertex.normal
@@ -536,7 +548,7 @@ class Export_babylon(bpy.types.Operator, ExportHelper):
                     
             subMeshes[materialIndex].verticesCount = verticesCount - subMeshes[materialIndex].verticesStart
             subMeshes[materialIndex].indexCount = indicesCount - subMeshes[materialIndex].indexStart
-                
+
         positions=positions.rstrip(',')
         normals=normals.rstrip(',')
         indices=indices.rstrip(',')
@@ -567,10 +579,14 @@ class Export_babylon(bpy.types.Operator, ExportHelper):
         # Writing mesh      
         file_handler.write("{")
         
-        Export_babylon.write_string(file_handler, "name", object.name, True)        
-        Export_babylon.write_string(file_handler, "id", object.name)        
-        if object.parent != None:
-            Export_babylon.write_string(file_handler, "parentId", object.parent.name)
+        Export_babylon.write_string(file_handler, "name", object.name + nameID, True)        
+        Export_babylon.write_string(file_handler, "id", object.name + nameID)   
+
+        if forcedParent is None:     
+            if object.parent != None:
+                Export_babylon.write_string(file_handler, "parentId", object.parent.name)
+        else:
+            Export_babylon.write_string(file_handler, "parentId", forcedParent.name)
         
         if len(object.material_slots) == 1:
             material = object.material_slots[0].material
@@ -592,15 +608,36 @@ class Export_babylon(bpy.types.Operator, ExportHelper):
             billboardMode = 0
         else:
             billboardMode = 0
-            
-        Export_babylon.write_vector(file_handler, "position", loc)
-        Export_babylon.write_vectorScaled(file_handler, "rotation", rot.to_euler("XYZ"), -1)
-        Export_babylon.write_vector(file_handler, "scaling", scale)
+        
+        if forcedParent is None:
+            Export_babylon.write_vector(file_handler, "position", loc)
+            Export_babylon.write_vectorScaled(file_handler, "rotation", rot.to_euler("XYZ"), -1)
+            Export_babylon.write_vector(file_handler, "scaling", scale)
+        else:
+            Export_babylon.write_vector(file_handler, "position", mathutils.Vector((0, 0, 0)))
+            Export_babylon.write_vectorScaled(file_handler, "rotation", mathutils.Vector((0, 0, 0)), 1)
+            Export_babylon.write_vector(file_handler, "scaling", mathutils.Vector((1, 1, 1)))
+
         Export_babylon.write_bool(file_handler, "isVisible", object.is_visible(scene))
         Export_babylon.write_bool(file_handler, "isEnabled", True)
+        Export_babylon.write_bool(file_handler, "useFlatShading", object.data.useFlatShading)
         Export_babylon.write_bool(file_handler, "checkCollisions", object.data.checkCollisions)
         Export_babylon.write_int(file_handler, "billboardMode", billboardMode)
         Export_babylon.write_bool(file_handler, "receiveShadows", object.data.receiveShadows)
+
+        # Export Physics
+        if object.rigid_body != None:
+            shape_items = {'BOX': 1, 'SPHERE': 2}
+            shape_type = shape_items[object.rigid_body.collision_shape]
+            Export_babylon.write_int(file_handler, "physicsImpostor", shape_type)
+            mass = object.rigid_body.mass
+            if mass < 0.005:
+                mass = 0
+            Export_babylon.write_float(file_handler, "physicsMass", mass)
+            Export_babylon.write_float(file_handler, "physicsFriction", object.rigid_body.friction)
+            Export_babylon.write_float(file_handler, "physicsRestitution", object.rigid_body.restitution)
+
+        # Geometry
         if hasSkeleton:
             i = 0
             for obj in [object for object in scene.objects if object.is_visible(scene)]:
@@ -644,7 +681,7 @@ class Export_babylon(bpy.types.Operator, ExportHelper):
             file_handler.write("}")
             first = False
         file_handler.write("]")
-                
+
         #Export Animations
         
         rotAnim = False
@@ -675,6 +712,8 @@ class Export_babylon(bpy.types.Operator, ExportHelper):
 
         # Closing
         file_handler.write("}")
+
+        return offsetFace
 
     def export_node(object, scene, file_handler):
         # Transform
@@ -908,7 +947,22 @@ class Export_babylon(bpy.types.Operator, ExportHelper):
 
                 first = False
                 if object.type == 'MESH':
-                    data_string = Export_babylon.export_mesh(object, scene, file_handler, multiMaterials)
+                    forcedParent = None
+                    nameID = ""
+                    startFace = 0
+
+                    while True:
+                        startFace = Export_babylon.export_mesh(object, scene, file_handler, multiMaterials, startFace, forcedParent, str(nameID))
+
+                        if startFace == 0:
+                            break
+
+                        if forcedParent is None:
+                            nameID = 0
+                            forcedParent = object
+
+                        nameID = nameID + 1
+                        file_handler.write(",")
                 else:
                     data_string = Export_babylon.export_node(object, scene, file_handler)
 
@@ -960,6 +1014,10 @@ class Export_babylon(bpy.types.Operator, ExportHelper):
         return {'FINISHED'}
 
 # UI
+bpy.types.Mesh.useFlatShading = BoolProperty(
+    name="Use Flat Shading", 
+    default = False)
+
 bpy.types.Mesh.checkCollisions = BoolProperty(
     name="Check Collisions", 
     default = False)
@@ -1009,10 +1067,11 @@ class ObjectPanel(bpy.types.Panel):
         isCamera = isinstance(ob.data, bpy.types.Camera)
         isLight = isinstance(ob.data, bpy.types.Lamp)
         
-        if isMesh:
+        if isMesh:   
+            layout.prop(ob.data, 'useFlatShading') 
             layout.prop(ob.data, 'checkCollisions')     
             layout.prop(ob.data, 'castShadows')     
-            layout.prop(ob.data, 'receiveShadows')      
+            layout.prop(ob.data, 'receiveShadows')   
         elif isCamera:
             layout.prop(ob.data, 'checkCollisions')
             layout.prop(ob.data, 'applyGravity')

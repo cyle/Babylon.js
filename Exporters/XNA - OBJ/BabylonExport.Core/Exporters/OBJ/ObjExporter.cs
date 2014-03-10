@@ -35,7 +35,7 @@ namespace BabylonExport.Core.Exporters
             }
         }
 
-        public void GenerateBabylonFile(string file, string outputFile, bool skinned)
+        public void GenerateBabylonFile(string file, string outputFile, bool skinned, bool rightToLeft)
         {
             var text = File.ReadAllText(file);
 
@@ -80,7 +80,7 @@ namespace BabylonExport.Core.Exporters
                             normals.Add(line.ToVector3());
                             break;
                         case ObjHeader.Group:
-                            currentName = line.Tokens[1];
+                            currentName = line.Tokens.Length > 1 ? line.Tokens[1] : "noname";
                             break;
                         case ObjHeader.Faces:
                             AppendFace(line);

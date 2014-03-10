@@ -109,8 +109,9 @@ var BABYLON = BABYLON || {};
     };
 
     // Properties
-    BABYLON.Engine.prototype.getAspectRatio = function () {
-        return this._aspectRatio;
+    BABYLON.Engine.prototype.getAspectRatio = function (camera) {
+        var viewport = camera.viewport;
+        return (this._renderingCanvas.width * viewport.width) / (this._renderingCanvas.height * viewport.height);
     };
 
     BABYLON.Engine.prototype.getRenderWidth = function () {
@@ -189,7 +190,7 @@ var BABYLON = BABYLON || {};
     };
 
     BABYLON.Engine.prototype.clear = function (color, backBuffer, depthStencil) {
-        this._gl.clearColor(color.r, color.g, color.b, color.a || 1.0);
+        this._gl.clearColor(color.r, color.g, color.b, color.a !== undefined ? color.a : 1.0);
         this._gl.clearDepth(1.0);
         var mode = 0;
 
@@ -210,15 +211,13 @@ var BABYLON = BABYLON || {};
         
         this._cachedViewport = viewport;
         
-        this._gl.viewport(x * width, y * height, width * viewport.width, height * viewport.height);
-        this._aspectRatio = (width * viewport.width) / (height * viewport.height);
+        this._gl.viewport(x * width, y * height, width * viewport.width, height * viewport.height);        
     };
     
     BABYLON.Engine.prototype.setDirectViewport = function (x, y, width, height) {
         this._cachedViewport = null;
 
         this._gl.viewport(x, y, width, height);
-        this._aspectRatio = width / height;
     };
 
     BABYLON.Engine.prototype.beginFrame = function () {
@@ -238,7 +237,6 @@ var BABYLON = BABYLON || {};
         var gl = this._gl;
         gl.bindFramebuffer(gl.FRAMEBUFFER, texture._framebuffer);
         this._gl.viewport(0, 0, texture._width, texture._height);
-        this._aspectRatio = texture._width / texture._height;
 
         this.wipeCaches();
     };
@@ -560,7 +558,7 @@ var BABYLON = BABYLON || {};
                 break;
             case BABYLON.Engine.ALPHA_COMBINE:
                 this.setDepthWrite(false);
-                this._gl.blendFuncSeparate(this._gl.SRC_ALPHA, this._gl.ONE_MINUS_SRC_ALPHA, this._gl.ZERO, this._gl.ONE);
+                this._gl.blendFuncSeparate(this._gl.SRC_ALPHA, this._gl.ONE_MINUS_SRC_ALPHA, this._gl.ONE, this._gl.ONE);
                 this._gl.enable(this._gl.BLEND);
                 break;
             case BABYLON.Engine.ALPHA_ADD:
@@ -808,10 +806,8 @@ var BABYLON = BABYLON || {};
 
         return texture;
     };
-
-    var extensions = ["_px.jpg", "_py.jpg", "_pz.jpg", "_nx.jpg", "_ny.jpg", "_nz.jpg"];
-
-    var cascadeLoad = function (rootUrl, index, loadedImages, scene, onfinish) {
+    
+    var cascadeLoad = function (rootUrl, index, loadedImages, scene, onfinish, extensions) {
         var img;
         
         var onload = function () {
@@ -820,7 +816,7 @@ var BABYLON = BABYLON || {};
             scene._removePendingData(img);
 
             if (index != extensions.length - 1) {
-                cascadeLoad(rootUrl, index + 1, loadedImages, scene, onfinish);
+                cascadeLoad(rootUrl, index + 1, loadedImages, scene, onfinish, extensions);
             } else {
                 onfinish(loadedImages);
             }
@@ -834,7 +830,7 @@ var BABYLON = BABYLON || {};
         scene._addPendingData(img);
     };
 
-    BABYLON.Engine.prototype.createCubeTexture = function (rootUrl, scene) {
+    BABYLON.Engine.prototype.createCubeTexture = function (rootUrl, scene, extensions) {
         var gl = this._gl;
 
         var texture = gl.createTexture();
@@ -845,7 +841,7 @@ var BABYLON = BABYLON || {};
 
         var that = this;
         cascadeLoad(rootUrl, 0, [], scene, function (imgs) {
-            var width = getExponantOfTwo(imgs[0].width);
+            var width = getExponantOfTwo(imgs[0].width, that._caps.maxCubemapTextureSize);
             var height = width;
 
             that._workingCanvas.width = width;
@@ -877,7 +873,7 @@ var BABYLON = BABYLON || {};
             texture._width = width;
             texture._height = height;
             texture.isReady = true;
-        });
+        }, extensions);
 
         return texture;
     };
@@ -928,7 +924,7 @@ var BABYLON = BABYLON || {};
     };
 
     BABYLON.Engine.prototype.setTextureFromPostProcess = function (channel, postProcess) {
-        this._bindTexture(channel, postProcess._texture);
+        this._bindTexture(channel, postProcess._textures.data[postProcess._currentRenderTextureInd]);
     };
 
     BABYLON.Engine.prototype.setTexture = function (channel, texture) {
