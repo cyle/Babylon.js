@@ -14,6 +14,8 @@ Online [sandbox](http://www.babylonjs.com/sandbox) where you can test your .baby
 - [Tutorials](https://github.com/BabylonJS/Babylon.js/wiki/Tutorials)
 - [Creating the minified version](https://github.com/BabylonJS/Babylon.js/wiki/Creating-the-minified-version)
 - [Roadmap](https://github.com/BabylonJS/Babylon.js/wiki/Roadmap)
+- [Samples](https://github.com/BabylonJS/Samples)
+- [Video overview (1 hour) of BabylonJS features](http://www.youtube.com/watch?v=z80TYMqsdEM)
 
 ## Features
 - Complete scene graph with lights, cameras, materials and meshes
@@ -43,6 +45,7 @@ Online [sandbox](http://www.babylonjs.com/sandbox) where you can test your .baby
  - Bump texture
  - Up to 4 lights (points, directionals, spots, hemispherics)
  - Custom materials
+ - Custom shaders
  - Skybox
  - Vertex color
  - Bones (Animations and shadows are supported)
@@ -61,17 +64,22 @@ Online [sandbox](http://www.babylonjs.com/sandbox) where you can test your .baby
  - Render target textures
  - Dynamic textures (canvas)
  - Video textures
+ - Compressed (DDS) textures
 -  Cameras (Perspective and orthographic):
  - Arc rotate camera
  - Free camera
  - Touch camera
+ - Virtual Joysticks camera
+ - Oculus Rift camera
 -  Meshes: 
  - Mesh cloning
  - Dynamic meshes
  - Height maps
+ - Constructive solid geometries
 -  Import: 
  - Babylon scene file can be converted from .OBJ, .FBX, .MXB
  - Exporter for Blender
+ - Exporter for Cheetah3d
 
 ## Apache License 2.0 (Apache)
 

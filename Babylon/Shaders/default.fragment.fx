@@ -27,11 +27,12 @@ varying vec3 vColor;
 // Lights
 #ifdef LIGHT0
 uniform vec4 vLightData0;
-uniform vec3 vLightDiffuse0;
+uniform vec4 vLightDiffuse0;
 uniform vec3 vLightSpecular0;
 #ifdef SHADOW0
 varying vec4 vPositionFromLight0;
 uniform sampler2D shadowSampler0;
+uniform float darkness0;
 #endif
 #ifdef SPOTLIGHT0
 uniform vec4 vLightDirection0;
@@ -43,11 +44,12 @@ uniform vec3 vLightGround0;
 
 #ifdef LIGHT1
 uniform vec4 vLightData1;
-uniform vec3 vLightDiffuse1;
+uniform vec4 vLightDiffuse1;
 uniform vec3 vLightSpecular1;
 #ifdef SHADOW1
 varying vec4 vPositionFromLight1;
 uniform sampler2D shadowSampler1;
+uniform float darkness1;
 #endif
 #ifdef SPOTLIGHT1
 uniform vec4 vLightDirection1;
@@ -59,11 +61,12 @@ uniform vec3 vLightGround1;
 
 #ifdef LIGHT2
 uniform vec4 vLightData2;
-uniform vec3 vLightDiffuse2;
+uniform vec4 vLightDiffuse2;
 uniform vec3 vLightSpecular2;
 #ifdef SHADOW2
 varying vec4 vPositionFromLight2;
 uniform sampler2D shadowSampler2;
+uniform float darkness2;
 #endif
 #ifdef SPOTLIGHT2
 uniform vec4 vLightDirection2;
@@ -75,11 +78,12 @@ uniform vec3 vLightGround2;
 
 #ifdef LIGHT3
 uniform vec4 vLightData3;
-uniform vec3 vLightDiffuse3;
+uniform vec4 vLightDiffuse3;
 uniform vec3 vLightSpecular3;
 #ifdef SHADOW3
 varying vec4 vPositionFromLight3;
 uniform sampler2D shadowSampler3;
+uniform float darkness3;
 #endif
 #ifdef SPOTLIGHT3
 uniform vec4 vLightDirection3;
@@ -178,7 +182,7 @@ float unpackHalf(vec2 color)
 	return color.x + (color.y / 255.0);
 }
 
-float computeShadow(vec4 vPositionFromLight, sampler2D shadowSampler)
+float computeShadow(vec4 vPositionFromLight, sampler2D shadowSampler, float darkness)
 {
 	vec3 depth = vPositionFromLight.xyz / vPositionFromLight.w;
 	vec2 uv = 0.5 * depth.xy + vec2(0.5, 0.5);
@@ -192,7 +196,7 @@ float computeShadow(vec4 vPositionFromLight, sampler2D shadowSampler)
 
 	if (depth.z > shadow)
 	{
-		return 0.;
+		return darkness;
 	}
 	return 1.;
 }
@@ -313,13 +317,17 @@ struct lightingInfo
 	vec3 specular;
 };
 
-lightingInfo computeLighting(vec3 viewDirectionW, vec3 vNormal, vec4 lightData, vec3 diffuseColor, vec3 specularColor) {
+lightingInfo computeLighting(vec3 viewDirectionW, vec3 vNormal, vec4 lightData, vec3 diffuseColor, vec3 specularColor, float range) {
 	lightingInfo result;
 
 	vec3 lightVectorW;
+	float attenuation = 1.0;
 	if (lightData.w == 0.)
 	{
-		lightVectorW = normalize(lightData.xyz - vPositionW);
+		vec3 direction = lightData.xyz - vPositionW;
+
+		attenuation =  max(0., 1.0 - length(direction) / range);
+		lightVectorW = normalize(direction);
 	}
 	else
 	{
@@ -332,18 +340,20 @@ lightingInfo computeLighting(vec3 viewDirectionW, vec3 vNormal, vec4 lightData, 
 	// Specular
 	vec3 angleW = normalize(viewDirectionW + lightVectorW);
 	float specComp = max(0., dot(vNormal, angleW));
-	specComp = pow(specComp, vSpecularColor.a);
+	specComp = pow(specComp, max(1., vSpecularColor.a));
 
-	result.diffuse = ndl * diffuseColor;
-	result.specular = specComp * specularColor;
+	result.diffuse = ndl * diffuseColor * attenuation;
+	result.specular = specComp * specularColor * attenuation;
 
 	return result;
 }
 
-lightingInfo computeSpotLighting(vec3 viewDirectionW, vec3 vNormal, vec4 lightData, vec4 lightDirection, vec3 diffuseColor, vec3 specularColor) {
+lightingInfo computeSpotLighting(vec3 viewDirectionW, vec3 vNormal, vec4 lightData, vec4 lightDirection, vec3 diffuseColor, vec3 specularColor, float range) {
 	lightingInfo result;
 
-	vec3 lightVectorW = normalize(lightData.xyz - vPositionW);
+	vec3 direction = lightData.xyz - vPositionW;
+	vec3 lightVectorW = normalize(direction);
+	float attenuation = max(0., 1.0 - length(direction) / range);
 
 	// diffuse
 	float cosAngle = max(0., dot(-lightDirection.xyz, lightVectorW));
@@ -362,8 +372,8 @@ lightingInfo computeSpotLighting(vec3 viewDirectionW, vec3 vNormal, vec4 lightDa
 		float specComp = max(0., dot(vNormal, angleW));
 		specComp = pow(specComp, vSpecularColor.a);
 
-		result.diffuse = ndl * spotAtten * diffuseColor;
-		result.specular = specComp * specularColor * spotAtten;
+		result.diffuse = ndl * spotAtten * diffuseColor * attenuation;
+		result.specular = specComp * specularColor * spotAtten * attenuation;
 
 		return result;
 	}
@@ -440,19 +450,19 @@ void main(void) {
 
 #ifdef LIGHT0
 #ifdef SPOTLIGHT0
-	lightingInfo info = computeSpotLighting(viewDirectionW, normalW, vLightData0, vLightDirection0, vLightDiffuse0, vLightSpecular0);
+	lightingInfo info = computeSpotLighting(viewDirectionW, normalW, vLightData0, vLightDirection0, vLightDiffuse0.rgb, vLightSpecular0, vLightDiffuse0.a);
 #endif
 #ifdef HEMILIGHT0
-	lightingInfo info = computeHemisphericLighting(viewDirectionW, normalW, vLightData0, vLightDiffuse0, vLightSpecular0, vLightGround0);
+	lightingInfo info = computeHemisphericLighting(viewDirectionW, normalW, vLightData0, vLightDiffuse0.rgb, vLightSpecular0, vLightGround0);
 #endif
 #ifdef POINTDIRLIGHT0
-	lightingInfo info = computeLighting(viewDirectionW, normalW, vLightData0, vLightDiffuse0, vLightSpecular0);
+	lightingInfo info = computeLighting(viewDirectionW, normalW, vLightData0, vLightDiffuse0.rgb, vLightSpecular0, vLightDiffuse0.a);
 #endif
 #ifdef SHADOW0
 #ifdef SHADOWVSM0
 	shadow = computeShadowWithVSM(vPositionFromLight0, shadowSampler0);
 #else
-	shadow = computeShadow(vPositionFromLight0, shadowSampler0);
+	shadow = computeShadow(vPositionFromLight0, shadowSampler0, darkness0);
 #endif
 #else
 	shadow = 1.;
@@ -463,19 +473,19 @@ void main(void) {
 
 #ifdef LIGHT1
 #ifdef SPOTLIGHT1
-	info = computeSpotLighting(viewDirectionW, normalW, vLightData1, vLightDirection1, vLightDiffuse1, vLightSpecular1);
+	info = computeSpotLighting(viewDirectionW, normalW, vLightData1, vLightDirection1, vLightDiffuse1.rgb, vLightSpecular1, vLightDiffuse1.a);
 #endif
 #ifdef HEMILIGHT1
-	info = computeHemisphericLighting(viewDirectionW, normalW, vLightData1, vLightDiffuse1, vLightSpecular1, vLightGround1);
+	info = computeHemisphericLighting(viewDirectionW, normalW, vLightData1, vLightDiffuse1.rgb, vLightSpecular1, vLightGround1);
 #endif
 #ifdef POINTDIRLIGHT1
-	info = computeLighting(viewDirectionW, normalW, vLightData1, vLightDiffuse1, vLightSpecular1);
+	info = computeLighting(viewDirectionW, normalW, vLightData1, vLightDiffuse1.rgb, vLightSpecular1, vLightDiffuse1.a);
 #endif
 #ifdef SHADOW1
 #ifdef SHADOWVSM1
 	shadow = computeShadowWithVSM(vPositionFromLight1, shadowSampler1);
 #else
-	shadow = computeShadow(vPositionFromLight1, shadowSampler1);
+	shadow = computeShadow(vPositionFromLight1, shadowSampler1, darkness1);
 #endif
 #else
 	shadow = 1.;
@@ -486,19 +496,19 @@ void main(void) {
 
 #ifdef LIGHT2
 #ifdef SPOTLIGHT2
-	info = computeSpotLighting(viewDirectionW, normalW, vLightData2, vLightDirection2, vLightDiffuse2, vLightSpecular2);
+	info = computeSpotLighting(viewDirectionW, normalW, vLightData2, vLightDirection2, vLightDiffuse2.rgb, vLightSpecular2, vLightDiffuse2.a);
 #endif
 #ifdef HEMILIGHT2
-	info = computeHemisphericLighting(viewDirectionW, normalW, vLightData2, vLightDiffuse2, vLightSpecular2, vLightGround2);
+	info = computeHemisphericLighting(viewDirectionW, normalW, vLightData2, vLightDiffuse2.rgb, vLightSpecular2, vLightGround2);
 #endif
 #ifdef POINTDIRLIGHT2
-	info = computeLighting(viewDirectionW, normalW, vLightData2, vLightDiffuse2, vLightSpecular2);
+	info = computeLighting(viewDirectionW, normalW, vLightData2, vLightDiffuse2.rgb, vLightSpecular2, vLightDiffuse2.a);
 #endif
 #ifdef SHADOW2
 #ifdef SHADOWVSM2
 	shadow = computeShadowWithVSM(vPositionFromLight2, shadowSampler2);
 #else
-	shadow = computeShadow(vPositionFromLight2, shadowSampler2);
+	shadow = computeShadow(vPositionFromLight2, shadowSampler2, darkness2);
 #endif	
 #else
 	shadow = 1.;
@@ -509,19 +519,19 @@ void main(void) {
 
 #ifdef LIGHT3
 #ifdef SPOTLIGHT3
-	info = computeSpotLighting(viewDirectionW, normalW, vLightData3, vLightDirection3, vLightDiffuse3, vLightSpecular3);
+	info = computeSpotLighting(viewDirectionW, normalW, vLightData3, vLightDirection3, vLightDiffuse3.rgb, vLightSpecular3, vLightDiffuse3.a);
 #endif
 #ifdef HEMILIGHT3
-	info = computeHemisphericLighting(viewDirectionW, normalW, vLightData3, vLightDiffuse3, vLightSpecular3, vLightGround3);
+	info = computeHemisphericLighting(viewDirectionW, normalW, vLightData3, vLightDiffuse3.rgb, vLightSpecular3, vLightGround3);
 #endif
 #ifdef POINTDIRLIGHT3
-	info = computeLighting(viewDirectionW, normalW, vLightData3, vLightDiffuse3, vLightSpecular3);
+	info = computeLighting(viewDirectionW, normalW, vLightData3, vLightDiffuse3.rgb, vLightSpecular3, vLightDiffuse3.a);
 #endif
 #ifdef SHADOW3
 #ifdef SHADOWVSM3
 	shadow = computeShadowWithVSM(vPositionFromLight3, shadowSampler3);
 #else
-	shadow = computeShadow(vPositionFromLight3, shadowSampler3);
+	shadow = computeShadow(vPositionFromLight3, shadowSampler3, darkness3);
 #endif	
 #else
 	shadow = 1.;

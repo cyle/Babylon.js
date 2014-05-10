@@ -1,5 +1,64 @@
 Changes list
 ============
+- 1.11.0:
+ - **Major updates**
+ - New option for mesh: ```mesh.showBoundingBox``` to display mesh's bounding box. You can configure back and front color using ```scene.getBoundingBoxRenderer()```. This function returns a ```BABYLON.BoundingBoxRenderer``` where you can define ```backColor```, ```frontColor``` and ```showBackLines``` ([deltakosh](http://www.github.com/deltakosh))
+ - New basic mesh: ```BABYLON.Mesh.CreateTorusKnot``` ([deltakosh](http://www.github.com/deltakosh))
+ - New ```BABYLON.AnaglyphArcRotateCamera``` and ```BABYLON.AnaglyphFreeCamera``` ([michael-korbas](https://github.com/michael-korbas)), ([deltakosh](http://www.github.com/deltakosh))
+ - Tags system ([gwenael-hagenmuller](https://github.com/gwenael-hagenmuller))
+ - New render pipeline system for post-processes. See documentation [here](https://github.com/BabylonJS/Babylon.js/wiki/How-to-use-PostProcessRenderPipeline) ([michael-korbas](https://github.com/michael-korbas))
+ - **Updates**
+ - Added parameters to enable or disable a type of texture on all ```BABYLON.StandardMaterial``` ([demonixis](http://www.github.com/demonixis))
+ - New ```BABYLON.VertexData.ExtractFromMesh``` function ([deltakosh](http://www.github.com/deltakosh))
+ - Cameras can now have sub-cameras (see ```BABYLON.AnaglyphArcRotateCamera``` for example) ([deltakosh](http://www.github.com/deltakosh))
+ - New ```BABYLON.Engine.runEvenInBackground``` property. True by default. It allows you to stop rendering when the browser is not the foreground application. ([deltakosh](http://www.github.com/deltakosh))
+ - Darkness of a shadow + shadow on transparent meshes ([clementlevasseur](https://github.com/clementlevasseur))
+ - New event for materials: ```onCompiled``` and ```onError``` ([deltakosh](http://www.github.com/deltakosh))
+ - **Bugfixes**
+ - Fixed a bug with collisions cache
+ - Fixed a bug with mesh.dispose when called twice ([deltakosh](http://www.github.com/deltakosh))
+ - Fixed an issue with Internet Explorer while rendering a RenderTargetTexture outside the engine renderLoop ([nicolas-obre](https://github.com/nicolas-obre))
+ - **New demos*
+ - [CYOS](http://www.babylonjs.com/cyos)
+- 1.10.0:
+ - **Major updates**
+ - Virtual joysticks canera ([davrous](http://www.github.com/davrous))
+ - Oculus Rift support ([davrous](http://www.github.com/davrous)), ([simonferquel](http://www.github.com/simonferquel)), ([deltakosh](http://www.github.com/deltakosh))
+ - Support for DDS textures ([deltakosh](http://www.github.com/deltakosh))
+ - Constructive solid geometries ([CraigFeldspar](https://github.com/CraigFeldspar))
+ - Importer plugin system ([deltakosh](http://www.github.com/deltakosh))
+ - Filter postprocess ([deltakosh](http://www.github.com/deltakosh))
+ - Convolution postprocess ([deltakosh](http://www.github.com/deltakosh))
+ - Added Cheetah3d exporter ([Calebsem](http://www.github.com/Calebsem))
+ - New ```BABYLON.ShaderMaterial``` object to simply create custom shaders ([deltakosh](http://www.github.com/deltakosh)) - See [Custom shader - cell shading](http://www.babylonjs.com/index.html?CUSTOMSHADER)
+ - New ```BABYLON.VertexData``` object to easily manipulates vertex attributes ([deltakosh](http://www.github.com/deltakosh)) - See [VertexData](http://www.babylonjs.com/index.html?CLOUDS)
+ - **Updates**
+ - Shaders can be loaded from DOM element alongside .fx files ([deltakosh](http://www.github.com/deltakosh))
+ - Adding arcRotateCamera.wheelPrecision ([deltakosh](http://www.github.com/deltakosh))
+ - Support for DOMMouseScroll ([nicolas-obre](https://github.com/nicolas-obre))
+ - Adding BABYLON.PickingInfo.prototype.getNormal ([deltakosh](http://www.github.com/deltakosh))
+ - Adding a new noMipmap parameter to ```BABYLON.CubeTexture``` constructor ([deltakosh](http://www.github.com/deltakosh))
+ - Adding ```BABYLON.Color3.FromInts()``` and ```BABYLON.Color4.FromInts()``` ([deltakosh](http://www.github.com/deltakosh))
+ - Adding invertY parameter to ```BABYLON.VideoTexture``` constructor ([deltakosh](http://www.github.com/deltakosh))
+ - Adding new ```BABYLON.Scene.getCameraByID``` function ([deltakosh](http://www.github.com/deltakosh))
+ - Adding new ```BABYLON.Scene.setActiveCameraByName()``` function ([deltakosh](http://www.github.com/deltakosh))
+ - Renaming ```BABYLON.Scene.activeCameraByID()``` to ```BABYLON.Scene.setActiveCameraByID()``` ([deltakosh](http://www.github.com/deltakosh))
+ - Adding texture wrapping support to Blender exporter ([vousk](http://www.github.com/vousk))
+ - Add Gulp for buiding babylon cross platform ([SideraX](http://www.github.com/SideraX))
+ - Shadow map improvement on pack method ([clementlevasseur](http://www.github.com/clementlevasseur))
+ - **Bugfixes**
+ - Fixing multimat naming convention in Blender ([deltakosh](http://www.github.com/deltakosh))
+ - Fixing mesh.clone ([temechon](http://www.github.com/temechon))
+ - Fixing camera rotation export in blender ([khmm12](http://www.github.com/khmm12))
+ - Fixing opacity map bug ([deltakosh](http://www.github.com/deltakosh))
+ - Fixing physics objects disposal ([deltakosh](http://www.github.com/deltakosh))
+ - Using the hardware scaling when creating a ray ([demonixis](http://www.github.com/demonixis))
+ - **New demos*
+ - [Hill Valley](http://www.babylonjs.com/index.html?HILLVALLEY)
+ - [Custom shader - cell shading](http://www.babylonjs.com/index.html?CUSTOMSHADER)
+ - [Constructive solid geometries](http://www.babylonjs.com/index.html?CSG)
+ - [Postprocess - Convolution](http://www.babylonjs.com/index.html?PPCONVOLUTION)
+ - [VertexData](http://www.babylonjs.com/index.html?CLOUDS)
 - 1.9.0:
  - **Major updates**
  - Beta support for scene serialization with ```BABYLON.SceneSerializer.Serialize``` function ([deltakosh](http://www.github.com/deltakosh))

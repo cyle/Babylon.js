@@ -1,68 +1,64 @@
-﻿"use strict";
+﻿var __extends = this.__extends || function (d, b) {
+    for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
+    function __() { this.constructor = d; }
+    __.prototype = b.prototype;
+    d.prototype = new __();
+};
+var BABYLON;
+(function (BABYLON) {
+    var Light = (function (_super) {
+        __extends(Light, _super);
+        function Light(name, scene) {
+            _super.call(this, name, scene);
+            this.diffuse = new BABYLON.Color3(1.0, 1.0, 1.0);
+            this.specular = new BABYLON.Color3(1.0, 1.0, 1.0);
+            this.intensity = 1.0;
+            this.range = Number.MAX_VALUE;
+            this.excludedMeshes = new Array();
 
-var BABYLON = BABYLON || {};
+            scene.lights.push(this);
+        }
+        Light.prototype.getShadowGenerator = function () {
+            return this._shadowGenerator;
+        };
 
-(function () {
-    BABYLON.Light = function (name, scene) {
-        BABYLON.Node.call(this, scene);
+        Light.prototype.transferToEffect = function (effect, uniformName0, uniformName1) {
+        };
 
-        this.name = name;
-        this.id = name;
+        Light.prototype._getWorldMatrix = function () {
+            return BABYLON.Matrix.Identity();
+        };
 
-        scene.lights.push(this);
-        
-        // Animations
-        this.animations = [];
-        
-        // Exclusions
-        this.excludedMeshes = [];
-    };
-    
-    BABYLON.Light.prototype = Object.create(BABYLON.Node.prototype);
-    
-    // Members
-    BABYLON.Light.prototype.intensity = 1.0;
-    
-    // Properties
-    BABYLON.Light.prototype.getScene = function () {
-        return this._scene;
-    };
+        Light.prototype.getWorldMatrix = function () {
+            this._currentRenderId = this.getScene().getRenderId();
 
-    BABYLON.Light.prototype.getShadowGenerator = function() {
-        return this._shadowGenerator;
-    };
+            var worldMatrix = this._getWorldMatrix();
 
-    // Methods
-    BABYLON.Light.prototype.transferToEffect = function() {
-    };
+            if (this.parent && this.parent.getWorldMatrix) {
+                if (!this._parentedWorldMatrix) {
+                    this._parentedWorldMatrix = BABYLON.Matrix.Identity();
+                }
 
-    BABYLON.Light.prototype.getWorldMatrix = function () {
-        this._currentRenderId = this._scene.getRenderId();
+                worldMatrix.multiplyToRef(this.parent.getWorldMatrix(), this._parentedWorldMatrix);
 
-        var worldMatrix = this._getWorldMatrix();
-
-        if (this.parent && this.parent.getWorldMatrix) {
-            if (!this._parentedWorldMatrix) {
-                this._parentedWorldMatrix = BABYLON.Matrix.Identity();
+                return this._parentedWorldMatrix;
             }
 
-            worldMatrix.multiplyToRef(this.parent.getWorldMatrix(), this._parentedWorldMatrix);
+            return worldMatrix;
+        };
 
-            return this._parentedWorldMatrix;
-        }
+        Light.prototype.dispose = function () {
+            if (this._shadowGenerator) {
+                this._shadowGenerator.dispose();
+                this._shadowGenerator = null;
+            }
 
-        return worldMatrix;
-    };
-
-    BABYLON.Light.prototype.dispose = function () {
-        if (this._shadowGenerator) {
-            this._shadowGenerator.dispose();
-            this._shadowGenerator = null;
-        }
-        
-        // Remove from scene
-        var index = this._scene.lights.indexOf(this);
-        this._scene.lights.splice(index, 1);
-    };
-
-})();
+            // Remove from scene
+            var index = this.getScene().lights.indexOf(this);
+            this.getScene().lights.splice(index, 1);
+        };
+        return Light;
+    })(BABYLON.Node);
+    BABYLON.Light = Light;
+})(BABYLON || (BABYLON = {}));
+//# sourceMappingURL=babylon.light.js.map
