@@ -8,27 +8,27 @@
         private _kind: string;
         private _strideSize: number;
 
-        constructor(mesh: Mesh, data: number[], kind: string, updatable: boolean, engine?: Engine) {
-            this._mesh = mesh;
-            this._engine = engine || mesh.getScene().getEngine();
-            this._updatable = updatable;
-
-            if (updatable) {
-                this._buffer = this._engine.createDynamicVertexBuffer(data.length * 4);
-                this._engine.updateDynamicVertexBuffer(this._buffer, data);
-            } else {
-                this._buffer = this._engine.createVertexBuffer(data);
+        constructor(engine: any, data: number[], kind: string, updatable: boolean, postponeInternalCreation?: boolean) {
+            if (engine instanceof Mesh) { // old versions of BABYLON.VertexBuffer accepted 'mesh' instead of 'engine'
+                this._engine = engine.getScene().getEngine();
+            }
+            else {
+                this._engine = engine;
             }
 
+            this._updatable = updatable;
+
             this._data = data;
+
+            if (!postponeInternalCreation) { // by default
+                this.create();
+            }
+
             this._kind = kind;
 
             switch (kind) {
                 case VertexBuffer.PositionKind:
                     this._strideSize = 3;
-                    if (this._mesh) {
-                        this._mesh._resetPointsArrayCache();
-                    }
                     break;
                 case VertexBuffer.NormalKind:
                     this._strideSize = 3;
@@ -69,31 +69,75 @@
         }
 
         // Methods
+        public create(data?: number[]): void {
+            if (!data && this._buffer) {
+                return; // nothing to do
+            }
+
+            data = data || this._data;
+
+            if (!this._buffer) { // create buffer
+                if (this._updatable) {
+                    this._buffer = this._engine.createDynamicVertexBuffer(data.length * 4);
+                } else {
+                    this._buffer = this._engine.createVertexBuffer(data);
+                }
+            }
+
+            if (this._updatable) { // update buffer
+                this._engine.updateDynamicVertexBuffer(this._buffer, data);
+                this._data = data;
+            }
+        }
+
         public update(data: number[]): void {
-            if (!this._updatable) {
-                console.log("You cannot update a non-updatable vertex buffer");
-                return;
-            }
-
-            this._engine.updateDynamicVertexBuffer(this._buffer, data);
-            this._data = data;
-
-            if (this._kind === BABYLON.VertexBuffer.PositionKind && this._mesh) {
-                this._mesh._resetPointsArrayCache();
-            }
+            this.create(data);
         }
 
         public dispose(): void {
-            this._engine._releaseBuffer(this._buffer);
+            if (!this._buffer) {
+                return;
+            }
+            if (this._engine._releaseBuffer(this._buffer)) {
+                this._buffer = null;
+            }
         }
 
         // Enums
-        public static PositionKind = "position";
-        public static NormalKind = "normal";
-        public static UVKind = "uv";
-        public static UV2Kind = "uv2";
-        public static ColorKind = "color";
-        public static MatricesIndicesKind = "matricesIndices";
-        public static MatricesWeightsKind = "matricesWeights";
+        private static _PositionKind = "position";
+        private static _NormalKind = "normal";
+        private static _UVKind = "uv";
+        private static _UV2Kind = "uv2";
+        private static _ColorKind = "color";
+        private static _MatricesIndicesKind = "matricesIndices";
+        private static _MatricesWeightsKind = "matricesWeights";
+
+        public static get PositionKind(): string {
+            return VertexBuffer._PositionKind;
+        }
+
+        public static get NormalKind(): string {
+            return VertexBuffer._NormalKind;
+        }
+
+        public static get UVKind(): string {
+            return VertexBuffer._UVKind;
+        }
+
+        public static get UV2Kind(): string {
+            return VertexBuffer._UV2Kind;
+        }
+
+        public static get ColorKind(): string {
+            return VertexBuffer._ColorKind;
+        }
+
+        public static get MatricesIndicesKind(): string {
+            return VertexBuffer._MatricesIndicesKind;
+        }
+
+        public static get MatricesWeightsKind(): string {
+            return VertexBuffer._MatricesWeightsKind;
+        }
     }
 } 

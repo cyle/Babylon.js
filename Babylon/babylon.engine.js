@@ -12,6 +12,38 @@
         return shader;
     };
 
+    var getSamplingParameters = function (samplingMode, generateMipMaps, gl) {
+        var magFilter = gl.NEAREST;
+        var minFilter = gl.NEAREST;
+        if (samplingMode === BABYLON.Texture.BILINEAR_SAMPLINGMODE) {
+            magFilter = gl.LINEAR;
+            if (generateMipMaps) {
+                minFilter = gl.LINEAR_MIPMAP_NEAREST;
+            } else {
+                minFilter = gl.LINEAR;
+            }
+        } else if (samplingMode === BABYLON.Texture.TRILINEAR_SAMPLINGMODE) {
+            magFilter = gl.LINEAR;
+            if (generateMipMaps) {
+                minFilter = gl.LINEAR_MIPMAP_LINEAR;
+            } else {
+                minFilter = gl.LINEAR;
+            }
+        } else if (samplingMode === BABYLON.Texture.NEAREST_SAMPLINGMODE) {
+            magFilter = gl.NEAREST;
+            if (generateMipMaps) {
+                minFilter = gl.NEAREST_MIPMAP_LINEAR;
+            } else {
+                minFilter = gl.NEAREST;
+            }
+        }
+
+        return {
+            min: minFilter,
+            mag: magFilter
+        };
+    };
+
     var getExponantOfTwo = function (value, max) {
         var count = 1;
 
@@ -25,7 +57,8 @@
         return count;
     };
 
-    var prepareWebGLTexture = function (texture, gl, scene, width, height, invertY, noMipmap, isCompressed, processFunction) {
+    var prepareWebGLTexture = function (texture, gl, scene, width, height, invertY, noMipmap, isCompressed, processFunction, samplingMode) {
+        if (typeof samplingMode === "undefined") { samplingMode = BABYLON.Texture.TRILINEAR_SAMPLINGMODE; }
         var engine = scene.getEngine();
         var potWidth = getExponantOfTwo(width, engine.getCaps().maxTextureSize);
         var potHeight = getExponantOfTwo(height, engine.getCaps().maxTextureSize);
@@ -35,17 +68,15 @@
 
         processFunction(potWidth, potHeight);
 
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        var filters = getSamplingParameters(samplingMode, !noMipmap, gl);
 
-        if (noMipmap) {
-            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-        } else {
-            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filters.mag);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filters.min);
 
-            if (!isCompressed) {
-                gl.generateMipmap(gl.TEXTURE_2D);
-            }
+        if (!noMipmap && !isCompressed) {
+            gl.generateMipmap(gl.TEXTURE_2D);
         }
+
         gl.bindTexture(gl.TEXTURE_2D, null);
 
         engine._activeTexturesCache = [];
@@ -104,7 +135,6 @@
             this._loadedTexturesCache = new Array();
             this._activeTexturesCache = new Array();
             this._compiledEffects = {};
-            this._lastVertexAttribIndex = 0;
             this._depthMask = false;
             this._renderingCanvas = canvas;
 
@@ -153,6 +183,7 @@
             this._caps.textureFloat = (this._gl.getExtension('OES_texture_float') !== null);
             this._caps.textureAnisotropicFilterExtension = this._gl.getExtension('EXT_texture_filter_anisotropic') || this._gl.getExtension('WEBKIT_EXT_texture_filter_anisotropic') || this._gl.getExtension('MOZ_EXT_texture_filter_anisotropic');
             this._caps.maxAnisotropy = this._caps.textureAnisotropicFilterExtension ? this._gl.getParameter(this._caps.textureAnisotropicFilterExtension.MAX_TEXTURE_MAX_ANISOTROPY_EXT) : 0;
+            this._caps.instancedArrays = this._gl.getExtension('ANGLE_instanced_arrays');
 
             // Depth buffer
             this.setDepthBuffer(true);
@@ -196,6 +227,62 @@
             document.addEventListener("mozpointerlockchange", this._onPointerLockChange, false);
             document.addEventListener("webkitpointerlockchange", this._onPointerLockChange, false);
         }
+        Object.defineProperty(Engine, "ALPHA_DISABLE", {
+            get: function () {
+                return Engine._ALPHA_DISABLE;
+            },
+            enumerable: true,
+            configurable: true
+        });
+
+        Object.defineProperty(Engine, "ALPHA_ADD", {
+            get: function () {
+                return Engine._ALPHA_ADD;
+            },
+            enumerable: true,
+            configurable: true
+        });
+
+        Object.defineProperty(Engine, "ALPHA_COMBINE", {
+            get: function () {
+                return Engine._ALPHA_COMBINE;
+            },
+            enumerable: true,
+            configurable: true
+        });
+
+        Object.defineProperty(Engine, "DELAYLOADSTATE_NONE", {
+            get: function () {
+                return Engine._DELAYLOADSTATE_NONE;
+            },
+            enumerable: true,
+            configurable: true
+        });
+
+        Object.defineProperty(Engine, "DELAYLOADSTATE_LOADED", {
+            get: function () {
+                return Engine._DELAYLOADSTATE_LOADED;
+            },
+            enumerable: true,
+            configurable: true
+        });
+
+        Object.defineProperty(Engine, "DELAYLOADSTATE_LOADING", {
+            get: function () {
+                return Engine._DELAYLOADSTATE_LOADING;
+            },
+            enumerable: true,
+            configurable: true
+        });
+
+        Object.defineProperty(Engine, "DELAYLOADSTATE_NOTLOADED", {
+            get: function () {
+                return Engine._DELAYLOADSTATE_NOTLOADED;
+            },
+            enumerable: true,
+            configurable: true
+        });
+
         Engine.prototype.getAspectRatio = function (camera) {
             var viewport = camera.viewport;
             return (this.getRenderWidth() * viewport.width) / (this.getRenderHeight() * viewport.height);
@@ -388,11 +475,16 @@
         };
 
         // VBOs
+        Engine.prototype._resetVertexBufferBinding = function () {
+            this._gl.bindBuffer(this._gl.ARRAY_BUFFER, null);
+            this._cachedVertexBuffers = null;
+        };
+
         Engine.prototype.createVertexBuffer = function (vertices) {
             var vbo = this._gl.createBuffer();
             this._gl.bindBuffer(this._gl.ARRAY_BUFFER, vbo);
             this._gl.bufferData(this._gl.ARRAY_BUFFER, new Float32Array(vertices), this._gl.STATIC_DRAW);
-            this._gl.bindBuffer(this._gl.ARRAY_BUFFER, null);
+            this._resetVertexBufferBinding();
             vbo.references = 1;
             return vbo;
         };
@@ -401,31 +493,37 @@
             var vbo = this._gl.createBuffer();
             this._gl.bindBuffer(this._gl.ARRAY_BUFFER, vbo);
             this._gl.bufferData(this._gl.ARRAY_BUFFER, capacity, this._gl.DYNAMIC_DRAW);
-            this._gl.bindBuffer(this._gl.ARRAY_BUFFER, null);
+            this._resetVertexBufferBinding();
             vbo.references = 1;
             return vbo;
         };
 
         Engine.prototype.updateDynamicVertexBuffer = function (vertexBuffer, vertices, length) {
             this._gl.bindBuffer(this._gl.ARRAY_BUFFER, vertexBuffer);
-            if (length && length != vertices.length) {
-                this._gl.bufferSubData(this._gl.ARRAY_BUFFER, 0, new Float32Array(vertices, 0, length));
+
+            //if (length && length != vertices.length) {
+            //    this._gl.bufferSubData(this._gl.ARRAY_BUFFER, 0, new Float32Array(vertices, 0, length));
+            //} else {
+            if (vertices instanceof Float32Array) {
+                this._gl.bufferSubData(this._gl.ARRAY_BUFFER, 0, vertices);
             } else {
-                if (vertices instanceof Float32Array) {
-                    this._gl.bufferSubData(this._gl.ARRAY_BUFFER, 0, vertices);
-                } else {
-                    this._gl.bufferSubData(this._gl.ARRAY_BUFFER, 0, new Float32Array(vertices));
-                }
+                this._gl.bufferSubData(this._gl.ARRAY_BUFFER, 0, new Float32Array(vertices));
             }
 
-            this._gl.bindBuffer(this._gl.ARRAY_BUFFER, null);
+            //  }
+            this._resetVertexBufferBinding();
+        };
+
+        Engine.prototype._resetIndexBufferBinding = function () {
+            this._gl.bindBuffer(this._gl.ELEMENT_ARRAY_BUFFER, null);
+            this._cachedIndexBuffer = null;
         };
 
         Engine.prototype.createIndexBuffer = function (indices) {
             var vbo = this._gl.createBuffer();
             this._gl.bindBuffer(this._gl.ELEMENT_ARRAY_BUFFER, vbo);
             this._gl.bufferData(this._gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), this._gl.STATIC_DRAW);
-            this._gl.bindBuffer(this._gl.ELEMENT_ARRAY_BUFFER, null);
+            this._resetIndexBufferBinding();
             vbo.references = 1;
             return vbo;
         };
@@ -439,7 +537,7 @@
 
                 var offset = 0;
                 for (var index = 0; index < vertexDeclaration.length; index++) {
-                    var order = effect.getAttribute(index);
+                    var order = effect.getAttributeLocation(index);
 
                     if (order >= 0) {
                         this._gl.vertexAttribPointer(order, vertexDeclaration[index], this._gl.FLOAT, false, vertexStrideSize, offset);
@@ -462,10 +560,13 @@
                 var attributes = effect.getAttributesNames();
 
                 for (var index = 0; index < attributes.length; index++) {
-                    var order = effect.getAttribute(index);
+                    var order = effect.getAttributeLocation(index);
 
                     if (order >= 0) {
                         var vertexBuffer = vertexBuffers[attributes[index]];
+                        if (!vertexBuffer) {
+                            continue;
+                        }
                         var stride = vertexBuffer.getStrideSize();
                         this._gl.bindBuffer(this._gl.ARRAY_BUFFER, vertexBuffer.getBuffer());
                         this._gl.vertexAttribPointer(order, stride, this._gl.FLOAT, false, stride * 4, 0);
@@ -484,10 +585,53 @@
 
             if (buffer.references === 0) {
                 this._gl.deleteBuffer(buffer);
+                return true;
+            }
+
+            return false;
+        };
+
+        Engine.prototype.createInstancesBuffer = function (capacity) {
+            var buffer = this._gl.createBuffer();
+
+            buffer.capacity = capacity;
+
+            this._gl.bindBuffer(this._gl.ARRAY_BUFFER, buffer);
+            this._gl.bufferData(this._gl.ARRAY_BUFFER, capacity, this._gl.DYNAMIC_DRAW);
+            return buffer;
+        };
+
+        Engine.prototype.deleteInstancesBuffer = function (buffer) {
+            this._gl.deleteBuffer(buffer);
+        };
+
+        Engine.prototype.updateAndBindInstancesBuffer = function (instancesBuffer, data, offsetLocations) {
+            this._gl.bindBuffer(this._gl.ARRAY_BUFFER, instancesBuffer);
+            this._gl.bufferSubData(this._gl.ARRAY_BUFFER, 0, data);
+
+            for (var index = 0; index < 4; index++) {
+                var offsetLocation = offsetLocations[index];
+                this._gl.enableVertexAttribArray(offsetLocation);
+                this._gl.vertexAttribPointer(offsetLocation, 4, this._gl.FLOAT, false, 64, index * 16);
+                this._caps.instancedArrays.vertexAttribDivisorANGLE(offsetLocation, 1);
             }
         };
 
-        Engine.prototype.draw = function (useTriangles, indexStart, indexCount) {
+        Engine.prototype.unBindInstancesBuffer = function (instancesBuffer, offsetLocations) {
+            this._gl.bindBuffer(this._gl.ARRAY_BUFFER, instancesBuffer);
+            for (var index = 0; index < 4; index++) {
+                var offsetLocation = offsetLocations[index];
+                this._gl.disableVertexAttribArray(offsetLocation);
+                this._caps.instancedArrays.vertexAttribDivisorANGLE(offsetLocation, 0);
+            }
+        };
+
+        Engine.prototype.draw = function (useTriangles, indexStart, indexCount, instancesCount) {
+            if (instancesCount) {
+                this._caps.instancedArrays.drawElementsInstancedANGLE(useTriangles ? this._gl.TRIANGLES : this._gl.LINES, indexCount, this._gl.UNSIGNED_SHORT, indexStart * 2, instancesCount);
+                return;
+            }
+
             this._gl.drawElements(useTriangles ? this._gl.TRIANGLES : this._gl.LINES, indexCount, this._gl.UNSIGNED_SHORT, indexStart * 2);
         };
 
@@ -525,7 +669,9 @@
             this._gl.attachShader(shaderProgram, vertexShader);
             this._gl.attachShader(shaderProgram, fragmentShader);
 
-            var linked = this._gl.linkProgram(shaderProgram);
+            this._gl.linkProgram(shaderProgram);
+            var linked = this._gl.getProgramParameter(shaderProgram, this._gl.LINK_STATUS);
+
             if (!linked) {
                 var error = this._gl.getProgramInfoLog(shaderProgram);
                 if (error) {
@@ -568,26 +714,30 @@
                 return;
             }
 
+            this._vertexAttribArrays = this._vertexAttribArrays || [];
+
             // Use program
             this._gl.useProgram(effect.getProgram());
 
-            var currentCount = effect.getAttributesCount();
-            var maxIndex = 0;
-            for (var index = 0; index < currentCount; index++) {
+            for (var i in this._vertexAttribArrays) {
+                if (i > this._gl.VERTEX_ATTRIB_ARRAY_ENABLED || !this._vertexAttribArrays[i]) {
+                    continue;
+                }
+                this._vertexAttribArrays[i] = false;
+                this._gl.disableVertexAttribArray(i);
+            }
+
+            var attributesCount = effect.getAttributesCount();
+            for (var index = 0; index < attributesCount; index++) {
                 // Attributes
-                var order = effect.getAttribute(index);
+                var order = effect.getAttributeLocation(index);
 
                 if (order >= 0) {
-                    this._gl.enableVertexAttribArray(effect.getAttribute(index));
-                    maxIndex = Math.max(maxIndex, order);
+                    this._vertexAttribArrays[order] = true;
+                    this._gl.enableVertexAttribArray(order);
                 }
             }
 
-            for (index = maxIndex + 1; index <= this._lastVertexAttribIndex; index++) {
-                this._gl.disableVertexAttribArray(index);
-            }
-
-            this._lastVertexAttribIndex = maxIndex;
             this._currentEffect = effect;
         };
 
@@ -731,10 +881,36 @@
             this._cachedEffectForVertexBuffers = null;
         };
 
-        Engine.prototype.createTexture = function (url, noMipmap, invertY, scene) {
+        Engine.prototype.setSamplingMode = function (texture, samplingMode) {
+            var gl = this._gl;
+
+            gl.bindTexture(gl.TEXTURE_2D, texture);
+
+            var magFilter = gl.NEAREST;
+            var minFilter = gl.NEAREST;
+
+            if (samplingMode === BABYLON.Texture.BILINEAR_SAMPLINGMODE) {
+                magFilter = gl.LINEAR;
+                minFilter = gl.LINEAR;
+            } else if (samplingMode === BABYLON.Texture.TRILINEAR_SAMPLINGMODE) {
+                magFilter = gl.LINEAR;
+                minFilter = gl.LINEAR_MIPMAP_LINEAR;
+            }
+
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, magFilter);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, minFilter);
+
+            gl.bindTexture(gl.TEXTURE_2D, null);
+        };
+
+        Engine.prototype.createTexture = function (url, noMipmap, invertY, scene, samplingMode) {
             var _this = this;
+            if (typeof samplingMode === "undefined") { samplingMode = BABYLON.Texture.TRILINEAR_SAMPLINGMODE; }
             var texture = this._gl.createTexture();
-            var isDDS = this.getCaps().s3tc && (url.substr(url.length - 4, 4).toLowerCase() === ".dds");
+
+            var extension = url.substr(url.length - 4, 4).toLowerCase();
+            var isDDS = this.getCaps().s3tc && (extension === ".dds");
+            var isTGA = (extension === ".tga");
 
             scene._addPendingData(texture);
             texture.url = url;
@@ -742,15 +918,25 @@
             texture.references = 1;
             this._loadedTexturesCache.push(texture);
 
-            if (isDDS) {
+            if (isTGA) {
+                BABYLON.Tools.LoadFile(url, function (arrayBuffer) {
+                    var data = new Uint8Array(arrayBuffer);
+
+                    var header = BABYLON.Internals.TGATools.GetTGAHeader(data);
+
+                    prepareWebGLTexture(texture, _this._gl, scene, header.width, header.height, invertY, noMipmap, false, function () {
+                        BABYLON.Internals.TGATools.UploadContent(_this._gl, data);
+                    }, samplingMode);
+                }, null, scene.database, true);
+            } else if (isDDS) {
                 BABYLON.Tools.LoadFile(url, function (data) {
                     var info = BABYLON.Internals.DDSTools.GetDDSInfo(data);
 
-                    var loadMipmap = info.mipmapCount > 1 && !noMipmap;
+                    var loadMipmap = (info.isRGB || info.isLuminance || info.mipmapCount > 1) && !noMipmap && ((info.width >> (info.mipmapCount - 1)) == 1);
 
-                    prepareWebGLTexture(texture, _this._gl, scene, info.width, info.height, invertY, !loadMipmap, true, function () {
-                        BABYLON.Internals.DDSTools.UploadDDSLevels(_this._gl, _this.getCaps().s3tc, data, loadMipmap);
-                    });
+                    prepareWebGLTexture(texture, _this._gl, scene, info.width, info.height, invertY, !loadMipmap, info.isFourCC, function () {
+                        BABYLON.Internals.DDSTools.UploadDDSLevels(_this._gl, _this.getCaps().s3tc, data, info, loadMipmap, 1);
+                    }, samplingMode);
                 }, null, scene.database, true);
             } else {
                 var onload = function (img) {
@@ -764,7 +950,7 @@
                         }
 
                         _this._gl.texImage2D(_this._gl.TEXTURE_2D, 0, _this._gl.RGBA, _this._gl.RGBA, _this._gl.UNSIGNED_BYTE, isPot ? img : _this._workingCanvas);
-                    });
+                    }, samplingMode);
                 };
 
                 var onerror = function () {
@@ -777,20 +963,18 @@
             return texture;
         };
 
-        Engine.prototype.createDynamicTexture = function (width, height, generateMipMaps) {
+        Engine.prototype.createDynamicTexture = function (width, height, generateMipMaps, samplingMode) {
             var texture = this._gl.createTexture();
 
             width = getExponantOfTwo(width, this._caps.maxTextureSize);
             height = getExponantOfTwo(height, this._caps.maxTextureSize);
 
             this._gl.bindTexture(this._gl.TEXTURE_2D, texture);
-            this._gl.texParameteri(this._gl.TEXTURE_2D, this._gl.TEXTURE_MAG_FILTER, this._gl.LINEAR);
 
-            if (!generateMipMaps) {
-                this._gl.texParameteri(this._gl.TEXTURE_2D, this._gl.TEXTURE_MIN_FILTER, this._gl.LINEAR);
-            } else {
-                this._gl.texParameteri(this._gl.TEXTURE_2D, this._gl.TEXTURE_MIN_FILTER, this._gl.LINEAR_MIPMAP_LINEAR);
-            }
+            var filters = getSamplingParameters(samplingMode, generateMipMaps, this._gl);
+
+            this._gl.texParameteri(this._gl.TEXTURE_2D, this._gl.TEXTURE_MAG_FILTER, filters.mag);
+            this._gl.texParameteri(this._gl.TEXTURE_2D, this._gl.TEXTURE_MIN_FILTER, filters.min);
             this._gl.bindTexture(this._gl.TEXTURE_2D, null);
 
             this._activeTexturesCache = [];
@@ -869,25 +1053,11 @@
 
             var width = size.width || size;
             var height = size.height || size;
-            var magFilter = gl.NEAREST;
-            var minFilter = gl.NEAREST;
-            if (samplingMode === BABYLON.Texture.BILINEAR_SAMPLINGMODE) {
-                magFilter = gl.LINEAR;
-                if (generateMipMaps) {
-                    minFilter = gl.LINEAR_MIPMAP_NEAREST;
-                } else {
-                    minFilter = gl.LINEAR;
-                }
-            } else if (samplingMode === BABYLON.Texture.TRILINEAR_SAMPLINGMODE) {
-                magFilter = gl.LINEAR;
-                if (generateMipMaps) {
-                    minFilter = gl.LINEAR_MIPMAP_LINEAR;
-                } else {
-                    minFilter = gl.LINEAR;
-                }
-            }
-            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, magFilter);
-            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, minFilter);
+
+            var filters = getSamplingParameters(samplingMode, generateMipMaps, gl);
+
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filters.mag);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filters.min);
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
             gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
@@ -940,43 +1110,76 @@
             texture.references = 1;
             this._loadedTexturesCache.push(texture);
 
-            cascadeLoad(rootUrl, 0, [], scene, function (imgs) {
-                var width = getExponantOfTwo(imgs[0].width, _this._caps.maxCubemapTextureSize);
-                var height = width;
+            var extension = rootUrl.substr(rootUrl.length - 4, 4).toLowerCase();
+            var isDDS = this.getCaps().s3tc && (extension === ".dds");
 
-                _this._workingCanvas.width = width;
-                _this._workingCanvas.height = height;
+            if (isDDS) {
+                BABYLON.Tools.LoadFile(rootUrl, function (data) {
+                    var info = BABYLON.Internals.DDSTools.GetDDSInfo(data);
 
-                var faces = [
-                    gl.TEXTURE_CUBE_MAP_POSITIVE_X, gl.TEXTURE_CUBE_MAP_POSITIVE_Y, gl.TEXTURE_CUBE_MAP_POSITIVE_Z,
-                    gl.TEXTURE_CUBE_MAP_NEGATIVE_X, gl.TEXTURE_CUBE_MAP_NEGATIVE_Y, gl.TEXTURE_CUBE_MAP_NEGATIVE_Z
-                ];
+                    var loadMipmap = (info.isRGB || info.isLuminance || info.mipmapCount > 1) && !noMipmap;
 
-                gl.bindTexture(gl.TEXTURE_CUBE_MAP, texture);
-                gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
+                    gl.bindTexture(gl.TEXTURE_CUBE_MAP, texture);
+                    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);
 
-                for (var index = 0; index < faces.length; index++) {
-                    _this._workingContext.drawImage(imgs[index], 0, 0, imgs[index].width, imgs[index].height, 0, 0, width, height);
-                    gl.texImage2D(faces[index], 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, _this._workingCanvas);
-                }
+                    BABYLON.Internals.DDSTools.UploadDDSLevels(_this._gl, _this.getCaps().s3tc, data, info, loadMipmap, 6);
 
-                if (!noMipmap) {
-                    gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
-                }
+                    if (!noMipmap && !info.isFourCC && info.mipmapCount == 1) {
+                        gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
+                    }
 
-                gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-                gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, noMipmap ? gl.LINEAR : gl.LINEAR_MIPMAP_LINEAR);
-                gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-                gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+                    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+                    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, loadMipmap ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR);
+                    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+                    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
-                gl.bindTexture(gl.TEXTURE_CUBE_MAP, null);
+                    gl.bindTexture(gl.TEXTURE_CUBE_MAP, null);
 
-                _this._activeTexturesCache = [];
+                    _this._activeTexturesCache = [];
 
-                texture._width = width;
-                texture._height = height;
-                texture.isReady = true;
-            }, extensions);
+                    texture._width = info.width;
+                    texture._height = info.height;
+                    texture.isReady = true;
+                });
+            } else {
+                cascadeLoad(rootUrl, 0, [], scene, function (imgs) {
+                    var width = getExponantOfTwo(imgs[0].width, _this._caps.maxCubemapTextureSize);
+                    var height = width;
+
+                    _this._workingCanvas.width = width;
+                    _this._workingCanvas.height = height;
+
+                    var faces = [
+                        gl.TEXTURE_CUBE_MAP_POSITIVE_X, gl.TEXTURE_CUBE_MAP_POSITIVE_Y, gl.TEXTURE_CUBE_MAP_POSITIVE_Z,
+                        gl.TEXTURE_CUBE_MAP_NEGATIVE_X, gl.TEXTURE_CUBE_MAP_NEGATIVE_Y, gl.TEXTURE_CUBE_MAP_NEGATIVE_Z
+                    ];
+
+                    gl.bindTexture(gl.TEXTURE_CUBE_MAP, texture);
+                    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
+
+                    for (var index = 0; index < faces.length; index++) {
+                        _this._workingContext.drawImage(imgs[index], 0, 0, imgs[index].width, imgs[index].height, 0, 0, width, height);
+                        gl.texImage2D(faces[index], 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, _this._workingCanvas);
+                    }
+
+                    if (!noMipmap) {
+                        gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
+                    }
+
+                    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+                    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, noMipmap ? gl.LINEAR : gl.LINEAR_MIPMAP_LINEAR);
+                    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+                    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+                    gl.bindTexture(gl.TEXTURE_CUBE_MAP, null);
+
+                    _this._activeTexturesCache = [];
+
+                    texture._width = width;
+                    texture._height = height;
+                    texture.isReady = true;
+                }, extensions);
+            }
 
             return texture;
         };
@@ -1164,19 +1367,18 @@
                 return false;
             }
         };
-        Engine.ShadersRepository = "Babylon/Shaders/";
+        Engine._ALPHA_DISABLE = 0;
+        Engine._ALPHA_ADD = 1;
+        Engine._ALPHA_COMBINE = 2;
 
-        Engine.ALPHA_DISABLE = 0;
-        Engine.ALPHA_ADD = 1;
-        Engine.ALPHA_COMBINE = 2;
-
-        Engine.DELAYLOADSTATE_NONE = 0;
-        Engine.DELAYLOADSTATE_LOADED = 1;
-        Engine.DELAYLOADSTATE_LOADING = 2;
-        Engine.DELAYLOADSTATE_NOTLOADED = 4;
+        Engine._DELAYLOADSTATE_NONE = 0;
+        Engine._DELAYLOADSTATE_LOADED = 1;
+        Engine._DELAYLOADSTATE_LOADING = 2;
+        Engine._DELAYLOADSTATE_NOTLOADED = 4;
 
         Engine.Epsilon = 0.001;
         Engine.CollisionsEpsilon = 0.001;
+        Engine.ShadersRepository = "Babylon/Shaders/";
         return Engine;
     })();
     BABYLON.Engine = Engine;

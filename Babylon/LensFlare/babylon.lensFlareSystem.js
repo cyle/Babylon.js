@@ -7,12 +7,13 @@
             this.borderLimit = 300;
             this._vertexDeclaration = [2];
             this._vertexStrideSize = 2 * 4;
+            this._isEnabled = true;
             this._scene = scene;
             this._emitter = emitter;
             scene.lensFlareSystems.push(this);
 
             this.meshesSelectionPredicate = function (m) {
-                return m.material && m.isVisible && m.isEnabled() && m.checkCollisions;
+                return m.material && m.isVisible && m.isEnabled() && m.checkCollisions && ((m.layerMask & scene.activeCamera.layerMask) != 0);
             };
 
             // VBO
@@ -39,6 +40,18 @@
             // Effects
             this._effect = this._scene.getEngine().createEffect("lensFlare", ["position"], ["color", "viewportMatrix"], ["textureSampler"], "");
         }
+        Object.defineProperty(LensFlareSystem.prototype, "isEnabled", {
+            get: function () {
+                return this._isEnabled;
+            },
+            set: function (value) {
+                this._isEnabled = value;
+            },
+            enumerable: true,
+            configurable: true
+        });
+
+
         LensFlareSystem.prototype.getScene = function () {
             return this._scene;
         };
@@ -72,6 +85,10 @@
         };
 
         LensFlareSystem.prototype._isVisible = function () {
+            if (!this._isEnabled) {
+                return false;
+            }
+
             var emitterPosition = this.getEmitterPosition();
             var direction = emitterPosition.subtract(this._scene.activeCamera.position);
             var distance = direction.length();

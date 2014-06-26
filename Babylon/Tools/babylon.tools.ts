@@ -1,6 +1,13 @@
-﻿module BABYLON {
+﻿// ANY
+declare module BABYLON {
+    export class Database {
+        static isUASupportingBlobStorage: boolean;
+    }
+}
 
-    declare var FilesTextures; //ANY
+module BABYLON {
+
+    //class FilesTextures { } //ANY
 
     export interface IAnimatable {
         animations: Array<Animation>;
@@ -67,6 +74,23 @@
 
         public static ToRadians(angle: number): number {
             return angle * Math.PI / 180;
+        }
+
+        public static ExtractMinAndMaxIndexed(positions: number[], indices: number[], indexStart:number, indexCount: number): { minimum: Vector3; maximum: Vector3 } {
+            var minimum = new Vector3(Number.MAX_VALUE, Number.MAX_VALUE, Number.MAX_VALUE);
+            var maximum = new Vector3(-Number.MAX_VALUE, -Number.MAX_VALUE, -Number.MAX_VALUE);
+
+            for (var index = indexStart; index < indexStart + indexCount; index ++) {
+                var current = new Vector3(positions[indices[index] * 3], positions[indices[index] * 3 + 1], positions[indices[index] * 3 + 2]);
+
+                minimum = BABYLON.Vector3.Minimize(current, minimum);
+                maximum = BABYLON.Vector3.Maximize(current, maximum);
+            }
+
+            return {
+                minimum: minimum,
+                maximum: maximum
+            };
         }
 
         public static ExtractMinAndMax(positions: number[], start: number, count: number): { minimum: Vector3; maximum: Vector3 } {
@@ -148,7 +172,14 @@
         }
 
         // External files
+        public static CleanUrl(url: string): string {
+            url = url.replace(/#/mg, "%23");
+            return url;
+        }
+
         public static LoadImage(url: string, onload, onerror, database): HTMLImageElement {
+            url = Tools.CleanUrl(url);
+
             var img = new Image();
             img.crossOrigin = 'anonymous';
 
@@ -170,7 +201,7 @@
 
 
             //ANY database to do!
-            if (database && database.enableTexturesOffline) { //ANY } && BABYLON.Database.isUASupportingBlobStorage) {
+            if (database && database.enableTexturesOffline && BABYLON.Database.isUASupportingBlobStorage) {
                 database.openAsync(loadFromIndexedDB, noIndexedDB);
             }
             else {
@@ -182,16 +213,16 @@
                         var textureName = url.substring(5);
                         var blobURL;
                         try {
-                            blobURL = URL.createObjectURL(FilesTextures[textureName], { oneTimeOnly: true });
+                            blobURL = URL.createObjectURL(BABYLON.FilesInput.FilesTextures[textureName], { oneTimeOnly: true });
                         }
                         catch (ex) {
                             // Chrome doesn't support oneTimeOnly parameter
-                            blobURL = URL.createObjectURL(FilesTextures[textureName]);
+                            blobURL = URL.createObjectURL(BABYLON.FilesInput.FilesTextures[textureName]);
                         }
                         img.src = blobURL;
                     }
                     catch (e) {
-                        console.log("Error while trying to load texture: " + textureName);
+                        Tools.Log("Error while trying to load texture: " + textureName);
                         img.src = null;
                     }
                 }
@@ -202,6 +233,8 @@
 
         //ANY
         public static LoadFile(url: string, callback: (data: any) => void, progressCallBack?: () => void, database?, useArrayBuffer?: boolean): void {
+            url = Tools.CleanUrl(url);
+
             var noIndexedDB = () => {
                 var request = new XMLHttpRequest();
                 var loadUrl = Tools.BaseUrl + url;
@@ -230,26 +263,54 @@
                 database.loadSceneFromDB(url, callback, progressCallBack, noIndexedDB);
             };
 
-            // Caching only scenes files
-            if (database && url.indexOf(".babylon") !== -1 && (database.enableSceneOffline)) {
-                database.openAsync(loadFromIndexedDB, noIndexedDB);
+            if (url.indexOf("file:") !== -1) {
+                var fileName = url.substring(5);
+                BABYLON.Tools.ReadFile(BABYLON.FilesInput.FilesToLoad[fileName], callback, progressCallBack, true);
             }
             else {
-                noIndexedDB();
+                // Caching only scenes files
+                if (database && url.indexOf(".babylon") !== -1 && (database.enableSceneOffline)) {
+                    database.openAsync(loadFromIndexedDB, noIndexedDB);
+                }
+                else {
+                    noIndexedDB();
+                }
             }
         }
 
-        public static ReadFile(fileToLoad, callback, progressCallBack): void {
+        public static ReadFile(fileToLoad, callback, progressCallBack, useArrayBuffer?: boolean): void {
             var reader = new FileReader();
             reader.onload = e => {
                 callback(e.target.result);
             };
             reader.onprogress = progressCallBack;
-            // Asynchronous read
-            reader.readAsText(fileToLoad);
+            if (!useArrayBuffer) {
+                // Asynchronous read
+                reader.readAsText(fileToLoad);
+            }
+            else {
+                reader.readAsArrayBuffer(fileToLoad);
+            }
         }
 
         // Misc.        
+
+        public static CheckExtends(v: Vector3, min: Vector3, max: Vector3): void {
+            if (v.x < min.x)
+                min.x = v.x;
+            if (v.y < min.y)
+                min.y = v.y;
+            if (v.z < min.z)
+                min.z = v.z;
+
+            if (v.x > max.x)
+                max.x = v.x;
+            if (v.y > max.y)
+                max.y = v.y;
+            if (v.z > max.z)
+                max.z = v.z;
+        }
+
         public static WithinEpsilon(a: number, b: number): boolean {
             var num = a - b;
             return -1.401298E-45 <= num && num <= 1.401298E-45;
@@ -371,6 +432,14 @@
             var width: number;
             var height: number;
 
+            var scene = camera.getScene();
+            var previousCamera: BABYLON.Camera = null;
+
+            if (scene.activeCamera !== camera) {
+                previousCamera = scene.activeCamera;
+                scene.activeCamera = camera;
+            }
+
             //If a precision value is specified
             if (size.precision) {
                 width = Math.round(engine.getRenderWidth() * size.precision);
@@ -399,12 +468,12 @@
                 width = size;
             }
             else {
-                console.error("Invalid 'size' parameter !");
+                Tools.Error("Invalid 'size' parameter !");
                 return;
             }
 
             //At this point size can be a number, or an object (according to engine.prototype.createRenderTargetTexture method)
-            var texture = new RenderTargetTexture("screenShot", size, engine.scenes[0]);
+            var texture = new RenderTargetTexture("screenShot", size, engine.scenes[0], false, false);
             texture.renderList = engine.scenes[0].meshes;
 
             texture.onAfterRender = () => {
@@ -450,7 +519,7 @@
                     a.href = base64Image;
                     var date = new Date();
                     var stringDate = date.getFullYear() + "/" + date.getMonth() + "/" + date.getDate() + "-" + date.getHours() + ":" + date.getMinutes();
-                    a.setAttribute("download", "screenshot-" + stringDate);
+                    a.setAttribute("download", "screenshot-" + stringDate + ".png");
 
                     window.document.body.appendChild(a);
 
@@ -469,8 +538,95 @@
 
             };
 
-            texture.render();
+            texture.render(true);
             texture.dispose();
+
+            if (previousCamera) {
+                scene.activeCamera = previousCamera;
+            }
+        }
+
+        // Logs
+        private static _NoneLogLevel = 0;
+        private static _MessageLogLevel = 1;
+        private static _WarningLogLevel = 2;
+        private static _ErrorLogLevel = 4;
+
+        static get NoneLogLevel(): number {
+            return Tools._NoneLogLevel;
+        }
+
+        static get MessageLogLevel(): number {
+            return Tools._MessageLogLevel;
+        }
+
+        static get WarningLogLevel(): number {
+            return Tools._WarningLogLevel;
+        }
+
+        static get ErrorLogLevel(): number {
+            return Tools._ErrorLogLevel;
+        }
+
+        static get AllLogLevel(): number {
+            return Tools._MessageLogLevel | Tools._WarningLogLevel | Tools._ErrorLogLevel;;
+        }
+
+        private static _FormatMessage(message: string): string {
+            var padStr = i => (i < 10) ? "0" + i : "" + i;
+
+            var date = new Date();
+            return "BJS - [" + padStr(date.getHours()) + ":" + padStr(date.getMinutes()) + ":" + padStr(date.getSeconds()) + "]: " + message;
+        }
+
+        public static Log: (message: string) => void = Tools._LogEnabled;
+
+        private static _LogDisabled(message: string): void {
+            // nothing to do
+        }
+        private static _LogEnabled(message: string): void {
+            console.log(Tools._FormatMessage(message));
+        }
+
+        public static Warn: (message: string) => void = Tools._WarnEnabled;
+
+        private static _WarnDisabled(message: string): void {
+            // nothing to do
+        }
+        private static _WarnEnabled(message: string): void {
+            console.warn(Tools._FormatMessage(message));
+        }
+
+        public static Error: (message: string) => void = Tools._ErrorEnabled;
+
+        private static _ErrorDisabled(message: string): void {
+            // nothing to do
+        }
+        private static _ErrorEnabled(message: string): void {
+            console.error(Tools._FormatMessage(message));
+        }
+
+        public static set LogLevels(level: number) {
+            if ((level & Tools.MessageLogLevel) === Tools.MessageLogLevel) {
+                Tools.Log = Tools._LogEnabled;
+            }
+            else {
+                Tools.Log = Tools._LogDisabled;
+            }
+
+            if ((level & Tools.WarningLogLevel) === Tools.WarningLogLevel) {
+                Tools.Warn = Tools._WarnEnabled;
+            }
+            else {
+                Tools.Warn = Tools._WarnDisabled;
+            }
+
+            if ((level & Tools.ErrorLogLevel) === Tools.ErrorLogLevel) {
+                Tools.Error = Tools._ErrorEnabled;
+            }
+            else {
+                Tools.Error = Tools._ErrorDisabled;
+            }
         }
     }
 } 

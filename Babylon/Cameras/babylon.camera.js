@@ -25,9 +25,10 @@ var BABYLON;
             this.isIntermediate = false;
             this.viewport = new BABYLON.Viewport(0, 0, 1.0, 1.0);
             this.subCameras = [];
+            this.layerMask = 0xFFFFFFFF;
             this._computedViewMatrix = BABYLON.Matrix.Identity();
             this._projectionMatrix = new BABYLON.Matrix();
-            this._postProcesses = [];
+            this._postProcesses = new Array();
             this._postProcessesTakenIndices = [];
 
             scene.cameras.push(this);
@@ -131,7 +132,7 @@ var BABYLON;
         Camera.prototype.attachPostProcess = function (postProcess, insertAt) {
             if (typeof insertAt === "undefined") { insertAt = null; }
             if (!postProcess.isReusable() && this._postProcesses.indexOf(postProcess) > -1) {
-                console.error("You're trying to reuse a post process not defined as reusable.");
+                BABYLON.Tools.Error("You're trying to reuse a post process not defined as reusable.");
                 return 0;
             }
 
@@ -270,6 +271,10 @@ var BABYLON;
 
             var engine = this.getEngine();
             if (this.mode === BABYLON.Camera.PERSPECTIVE_CAMERA) {
+                if (this.minZ <= 0) {
+                    this.minZ = 0.1;
+                }
+
                 BABYLON.Matrix.PerspectiveFovLHToRef(this.fov, engine.getAspectRatio(this), this.minZ, this.maxZ, this._projectionMatrix);
                 return this._projectionMatrix;
             }

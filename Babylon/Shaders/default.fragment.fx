@@ -414,6 +414,9 @@ void main(void) {
 	vec4 baseColor = vec4(1., 1., 1., 1.);
 	vec3 diffuseColor = vDiffuseColor.rgb;
 
+	// Alpha
+	float alpha = vDiffuseColor.a;
+
 #ifdef VERTEXCOLOR
 	diffuseColor *= vColor;
 #endif
@@ -426,11 +429,15 @@ void main(void) {
 		discard;
 #endif
 
+#ifdef ALPHAFROMDIFFUSE
+	alpha *= baseColor.a;
+#endif
+
 	baseColor.rgb *= vDiffuseInfos.y;
 #endif
 
 	// Bump
-	vec3 normalW = vNormalW;
+	vec3 normalW = normalize(vNormalW);
 
 #ifdef BUMP
 	normalW = perturbNormal(viewDirectionW);
@@ -548,7 +555,7 @@ void main(void) {
 
 	if (vReflectionInfos.z != 0.0)
 	{
-		reflectionColor = textureCube(reflectionCubeSampler, vReflectionUVW).rgb * vReflectionInfos.y;
+		reflectionColor = textureCube(reflectionCubeSampler, vReflectionUVW).rgb * vReflectionInfos.y * shadow;
 	}
 	else
 	{
@@ -561,17 +568,21 @@ void main(void) {
 
 		coords.y = 1.0 - coords.y;
 
-		reflectionColor = texture2D(reflection2DSampler, coords).rgb * vReflectionInfos.y;
+		reflectionColor = texture2D(reflection2DSampler, coords).rgb * vReflectionInfos.y * shadow;
 	}
 #endif
 
-	// Alpha
-	float alpha = vDiffuseColor.a;
-
 #ifdef OPACITY
 	vec4 opacityMap = texture2D(opacitySampler, vOpacityUV);
-	opacityMap.rgb = opacityMap.rgb * vec3(0.3, 0.59, 0.11) * opacityMap.a;
+
+#ifdef OPACITYRGB
+	opacityMap.rgb = opacityMap.rgb * vec3(0.3, 0.59, 0.11);
 	alpha *= (opacityMap.x + opacityMap.y + opacityMap.z)* vOpacityInfos.y;
+#else
+	alpha *= opacityMap.a * vOpacityInfos.y;
+#endif
+
+
 #endif
 
 	// Emissive

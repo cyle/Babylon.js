@@ -1,5 +1,8 @@
-﻿var BABYLON;
+﻿
+var BABYLON;
 (function (BABYLON) {
+    
+
     // Screenshots
     var screenshotCanvas;
 
@@ -56,6 +59,23 @@
 
         Tools.ToRadians = function (angle) {
             return angle * Math.PI / 180;
+        };
+
+        Tools.ExtractMinAndMaxIndexed = function (positions, indices, indexStart, indexCount) {
+            var minimum = new BABYLON.Vector3(Number.MAX_VALUE, Number.MAX_VALUE, Number.MAX_VALUE);
+            var maximum = new BABYLON.Vector3(-Number.MAX_VALUE, -Number.MAX_VALUE, -Number.MAX_VALUE);
+
+            for (var index = indexStart; index < indexStart + indexCount; index++) {
+                var current = new BABYLON.Vector3(positions[indices[index] * 3], positions[indices[index] * 3 + 1], positions[indices[index] * 3 + 2]);
+
+                minimum = BABYLON.Vector3.Minimize(current, minimum);
+                maximum = BABYLON.Vector3.Maximize(current, maximum);
+            }
+
+            return {
+                minimum: minimum,
+                maximum: maximum
+            };
         };
 
         Tools.ExtractMinAndMax = function (positions, start, count) {
@@ -134,7 +154,14 @@
         };
 
         // External files
+        Tools.CleanUrl = function (url) {
+            url = url.replace(/#/mg, "%23");
+            return url;
+        };
+
         Tools.LoadImage = function (url, onload, onerror, database) {
+            url = Tools.CleanUrl(url);
+
             var img = new Image();
             img.crossOrigin = 'anonymous';
 
@@ -155,7 +182,7 @@
             };
 
             //ANY database to do!
-            if (database && database.enableTexturesOffline) {
+            if (database && database.enableTexturesOffline && BABYLON.Database.isUASupportingBlobStorage) {
                 database.openAsync(loadFromIndexedDB, noIndexedDB);
             } else {
                 if (url.indexOf("file:") === -1) {
@@ -165,14 +192,14 @@
                         var textureName = url.substring(5);
                         var blobURL;
                         try  {
-                            blobURL = URL.createObjectURL(FilesTextures[textureName], { oneTimeOnly: true });
+                            blobURL = URL.createObjectURL(BABYLON.FilesInput.FilesTextures[textureName], { oneTimeOnly: true });
                         } catch (ex) {
                             // Chrome doesn't support oneTimeOnly parameter
-                            blobURL = URL.createObjectURL(FilesTextures[textureName]);
+                            blobURL = URL.createObjectURL(BABYLON.FilesInput.FilesTextures[textureName]);
                         }
                         img.src = blobURL;
                     } catch (e) {
-                        console.log("Error while trying to load texture: " + textureName);
+                        Tools.Log("Error while trying to load texture: " + textureName);
                         img.src = null;
                     }
                 }
@@ -183,6 +210,8 @@
 
         //ANY
         Tools.LoadFile = function (url, callback, progressCallBack, database, useArrayBuffer) {
+            url = Tools.CleanUrl(url);
+
             var noIndexedDB = function () {
                 var request = new XMLHttpRequest();
                 var loadUrl = Tools.BaseUrl + url;
@@ -211,26 +240,50 @@
                 database.loadSceneFromDB(url, callback, progressCallBack, noIndexedDB);
             };
 
-            // Caching only scenes files
-            if (database && url.indexOf(".babylon") !== -1 && (database.enableSceneOffline)) {
-                database.openAsync(loadFromIndexedDB, noIndexedDB);
+            if (url.indexOf("file:") !== -1) {
+                var fileName = url.substring(5);
+                BABYLON.Tools.ReadFile(BABYLON.FilesInput.FilesToLoad[fileName], callback, progressCallBack, true);
             } else {
-                noIndexedDB();
+                // Caching only scenes files
+                if (database && url.indexOf(".babylon") !== -1 && (database.enableSceneOffline)) {
+                    database.openAsync(loadFromIndexedDB, noIndexedDB);
+                } else {
+                    noIndexedDB();
+                }
             }
         };
 
-        Tools.ReadFile = function (fileToLoad, callback, progressCallBack) {
+        Tools.ReadFile = function (fileToLoad, callback, progressCallBack, useArrayBuffer) {
             var reader = new FileReader();
             reader.onload = function (e) {
                 callback(e.target.result);
             };
             reader.onprogress = progressCallBack;
-
-            // Asynchronous read
-            reader.readAsText(fileToLoad);
+            if (!useArrayBuffer) {
+                // Asynchronous read
+                reader.readAsText(fileToLoad);
+            } else {
+                reader.readAsArrayBuffer(fileToLoad);
+            }
         };
 
         // Misc.
+        Tools.CheckExtends = function (v, min, max) {
+            if (v.x < min.x)
+                min.x = v.x;
+            if (v.y < min.y)
+                min.y = v.y;
+            if (v.z < min.z)
+                min.z = v.z;
+
+            if (v.x > max.x)
+                max.x = v.x;
+            if (v.y > max.y)
+                max.y = v.y;
+            if (v.z > max.z)
+                max.z = v.z;
+        };
+
         Tools.WithinEpsilon = function (a, b) {
             var num = a - b;
             return -1.401298E-45 <= num && num <= 1.401298E-45;
@@ -350,6 +403,14 @@
             var width;
             var height;
 
+            var scene = camera.getScene();
+            var previousCamera = null;
+
+            if (scene.activeCamera !== camera) {
+                previousCamera = scene.activeCamera;
+                scene.activeCamera = camera;
+            }
+
             //If a precision value is specified
             if (size.precision) {
                 width = Math.round(engine.getRenderWidth() * size.precision);
@@ -370,12 +431,12 @@
                 height = size;
                 width = size;
             } else {
-                console.error("Invalid 'size' parameter !");
+                Tools.Error("Invalid 'size' parameter !");
                 return;
             }
 
             //At this point size can be a number, or an object (according to engine.prototype.createRenderTargetTexture method)
-            var texture = new BABYLON.RenderTargetTexture("screenShot", size, engine.scenes[0]);
+            var texture = new BABYLON.RenderTargetTexture("screenShot", size, engine.scenes[0], false, false);
             texture.renderList = engine.scenes[0].meshes;
 
             texture.onAfterRender = function () {
@@ -419,7 +480,7 @@
                     a.href = base64Image;
                     var date = new Date();
                     var stringDate = date.getFullYear() + "/" + date.getMonth() + "/" + date.getDate() + "-" + date.getHours() + ":" + date.getMinutes();
-                    a.setAttribute("download", "screenshot-" + stringDate);
+                    a.setAttribute("download", "screenshot-" + stringDate + ".png");
 
                     window.document.body.appendChild(a);
 
@@ -436,10 +497,120 @@
                 }
             };
 
-            texture.render();
+            texture.render(true);
             texture.dispose();
+
+            if (previousCamera) {
+                scene.activeCamera = previousCamera;
+            }
         };
+
+        Object.defineProperty(Tools, "NoneLogLevel", {
+            get: function () {
+                return Tools._NoneLogLevel;
+            },
+            enumerable: true,
+            configurable: true
+        });
+
+        Object.defineProperty(Tools, "MessageLogLevel", {
+            get: function () {
+                return Tools._MessageLogLevel;
+            },
+            enumerable: true,
+            configurable: true
+        });
+
+        Object.defineProperty(Tools, "WarningLogLevel", {
+            get: function () {
+                return Tools._WarningLogLevel;
+            },
+            enumerable: true,
+            configurable: true
+        });
+
+        Object.defineProperty(Tools, "ErrorLogLevel", {
+            get: function () {
+                return Tools._ErrorLogLevel;
+            },
+            enumerable: true,
+            configurable: true
+        });
+
+        Object.defineProperty(Tools, "AllLogLevel", {
+            get: function () {
+                return Tools._MessageLogLevel | Tools._WarningLogLevel | Tools._ErrorLogLevel;
+                ;
+            },
+            enumerable: true,
+            configurable: true
+        });
+
+        Tools._FormatMessage = function (message) {
+            var padStr = function (i) {
+                return (i < 10) ? "0" + i : "" + i;
+            };
+
+            var date = new Date();
+            return "BJS - [" + padStr(date.getHours()) + ":" + padStr(date.getMinutes()) + ":" + padStr(date.getSeconds()) + "]: " + message;
+        };
+
+        Tools._LogDisabled = function (message) {
+            // nothing to do
+        };
+        Tools._LogEnabled = function (message) {
+            console.log(Tools._FormatMessage(message));
+        };
+
+        Tools._WarnDisabled = function (message) {
+            // nothing to do
+        };
+        Tools._WarnEnabled = function (message) {
+            console.warn(Tools._FormatMessage(message));
+        };
+
+        Tools._ErrorDisabled = function (message) {
+            // nothing to do
+        };
+        Tools._ErrorEnabled = function (message) {
+            console.error(Tools._FormatMessage(message));
+        };
+
+        Object.defineProperty(Tools, "LogLevels", {
+            set: function (level) {
+                if ((level & Tools.MessageLogLevel) === Tools.MessageLogLevel) {
+                    Tools.Log = Tools._LogEnabled;
+                } else {
+                    Tools.Log = Tools._LogDisabled;
+                }
+
+                if ((level & Tools.WarningLogLevel) === Tools.WarningLogLevel) {
+                    Tools.Warn = Tools._WarnEnabled;
+                } else {
+                    Tools.Warn = Tools._WarnDisabled;
+                }
+
+                if ((level & Tools.ErrorLogLevel) === Tools.ErrorLogLevel) {
+                    Tools.Error = Tools._ErrorEnabled;
+                } else {
+                    Tools.Error = Tools._ErrorDisabled;
+                }
+            },
+            enumerable: true,
+            configurable: true
+        });
         Tools.BaseUrl = "";
+
+        Tools._NoneLogLevel = 0;
+        Tools._MessageLogLevel = 1;
+        Tools._WarningLogLevel = 2;
+        Tools._ErrorLogLevel = 4;
+
+        Tools.Log = Tools._LogEnabled;
+
+        Tools.Warn = Tools._WarnEnabled;
+
+        Tools.Error = Tools._ErrorEnabled;
         return Tools;
     })();
     BABYLON.Tools = Tools;

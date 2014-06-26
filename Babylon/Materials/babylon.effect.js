@@ -46,7 +46,13 @@
             return this._attributesNames;
         };
 
-        Effect.prototype.getAttribute = function (index) {
+        Effect.prototype.getAttributeLocation = function (index) {
+            return this._attributes[index];
+        };
+
+        Effect.prototype.getAttributeLocationByName = function (name) {
+            var index = this._attributesNames.indexOf(name);
+
             return this._attributes[index];
         };
 
@@ -153,10 +159,10 @@
                     }
                     this._prepareEffect(vertexSourceCode, fragmentSourceCode, attributesNames, defines, optionalDefines, true);
                 } else {
-                    console.error("Unable to compile effect: " + this.name);
-                    console.error("Defines: " + defines);
-                    console.error("Optional defines: " + optionalDefines);
-                    console.error("Error: " + e.message);
+                    BABYLON.Tools.Error("Unable to compile effect: " + this.name);
+                    BABYLON.Tools.Error("Defines: " + defines);
+                    BABYLON.Tools.Error("Optional defines: " + optionalDefines);
+                    BABYLON.Tools.Error("Error: " + e.message);
                     this._compilationError = e.message;
 
                     if (this.onError) {

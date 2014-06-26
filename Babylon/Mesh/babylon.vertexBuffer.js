@@ -1,27 +1,26 @@
 ﻿var BABYLON;
 (function (BABYLON) {
     var VertexBuffer = (function () {
-        function VertexBuffer(mesh, data, kind, updatable, engine) {
-            this._mesh = mesh;
-            this._engine = engine || mesh.getScene().getEngine();
-            this._updatable = updatable;
-
-            if (updatable) {
-                this._buffer = this._engine.createDynamicVertexBuffer(data.length * 4);
-                this._engine.updateDynamicVertexBuffer(this._buffer, data);
+        function VertexBuffer(engine, data, kind, updatable, postponeInternalCreation) {
+            if (engine instanceof BABYLON.Mesh) {
+                this._engine = engine.getScene().getEngine();
             } else {
-                this._buffer = this._engine.createVertexBuffer(data);
+                this._engine = engine;
             }
 
+            this._updatable = updatable;
+
             this._data = data;
+
+            if (!postponeInternalCreation) {
+                this.create();
+            }
+
             this._kind = kind;
 
             switch (kind) {
                 case VertexBuffer.PositionKind:
                     this._strideSize = 3;
-                    if (this._mesh) {
-                        this._mesh._resetPointsArrayCache();
-                    }
                     break;
                 case VertexBuffer.NormalKind:
                     this._strideSize = 3;
@@ -61,31 +60,102 @@
         };
 
         // Methods
-        VertexBuffer.prototype.update = function (data) {
-            if (!this._updatable) {
-                console.log("You cannot update a non-updatable vertex buffer");
+        VertexBuffer.prototype.create = function (data) {
+            if (!data && this._buffer) {
                 return;
             }
 
-            this._engine.updateDynamicVertexBuffer(this._buffer, data);
-            this._data = data;
+            data = data || this._data;
 
-            if (this._kind === BABYLON.VertexBuffer.PositionKind && this._mesh) {
-                this._mesh._resetPointsArrayCache();
+            if (!this._buffer) {
+                if (this._updatable) {
+                    this._buffer = this._engine.createDynamicVertexBuffer(data.length * 4);
+                } else {
+                    this._buffer = this._engine.createVertexBuffer(data);
+                }
+            }
+
+            if (this._updatable) {
+                this._engine.updateDynamicVertexBuffer(this._buffer, data);
+                this._data = data;
             }
         };
 
-        VertexBuffer.prototype.dispose = function () {
-            this._engine._releaseBuffer(this._buffer);
+        VertexBuffer.prototype.update = function (data) {
+            this.create(data);
         };
 
-        VertexBuffer.PositionKind = "position";
-        VertexBuffer.NormalKind = "normal";
-        VertexBuffer.UVKind = "uv";
-        VertexBuffer.UV2Kind = "uv2";
-        VertexBuffer.ColorKind = "color";
-        VertexBuffer.MatricesIndicesKind = "matricesIndices";
-        VertexBuffer.MatricesWeightsKind = "matricesWeights";
+        VertexBuffer.prototype.dispose = function () {
+            if (!this._buffer) {
+                return;
+            }
+            if (this._engine._releaseBuffer(this._buffer)) {
+                this._buffer = null;
+            }
+        };
+
+        Object.defineProperty(VertexBuffer, "PositionKind", {
+            get: function () {
+                return VertexBuffer._PositionKind;
+            },
+            enumerable: true,
+            configurable: true
+        });
+
+        Object.defineProperty(VertexBuffer, "NormalKind", {
+            get: function () {
+                return VertexBuffer._NormalKind;
+            },
+            enumerable: true,
+            configurable: true
+        });
+
+        Object.defineProperty(VertexBuffer, "UVKind", {
+            get: function () {
+                return VertexBuffer._UVKind;
+            },
+            enumerable: true,
+            configurable: true
+        });
+
+        Object.defineProperty(VertexBuffer, "UV2Kind", {
+            get: function () {
+                return VertexBuffer._UV2Kind;
+            },
+            enumerable: true,
+            configurable: true
+        });
+
+        Object.defineProperty(VertexBuffer, "ColorKind", {
+            get: function () {
+                return VertexBuffer._ColorKind;
+            },
+            enumerable: true,
+            configurable: true
+        });
+
+        Object.defineProperty(VertexBuffer, "MatricesIndicesKind", {
+            get: function () {
+                return VertexBuffer._MatricesIndicesKind;
+            },
+            enumerable: true,
+            configurable: true
+        });
+
+        Object.defineProperty(VertexBuffer, "MatricesWeightsKind", {
+            get: function () {
+                return VertexBuffer._MatricesWeightsKind;
+            },
+            enumerable: true,
+            configurable: true
+        });
+        VertexBuffer._PositionKind = "position";
+        VertexBuffer._NormalKind = "normal";
+        VertexBuffer._UVKind = "uv";
+        VertexBuffer._UV2Kind = "uv2";
+        VertexBuffer._ColorKind = "color";
+        VertexBuffer._MatricesIndicesKind = "matricesIndices";
+        VertexBuffer._MatricesWeightsKind = "matricesWeights";
         return VertexBuffer;
     })();
     BABYLON.VertexBuffer = VertexBuffer;

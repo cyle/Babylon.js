@@ -17,8 +17,8 @@
         // Methods
         BoundingSphere.prototype._update = function (world) {
             BABYLON.Vector3.TransformCoordinatesToRef(this.center, world, this.centerWorld);
-            BABYLON.Vector3.TransformNormalFromFloatsToRef(1.0, 0, 0, world, this._tempRadiusVector);
-            this.radiusWorld = this._tempRadiusVector.length() * this.radius;
+            BABYLON.Vector3.TransformNormalFromFloatsToRef(1.0, 1.0, 1.0, world, this._tempRadiusVector);
+            this.radiusWorld = Math.max(Math.abs(this._tempRadiusVector.x), Math.abs(this._tempRadiusVector.y), Math.abs(this._tempRadiusVector.z)) * this.radius;
         };
 
         BoundingSphere.prototype.isInFrustum = function (frustumPlanes) {
@@ -37,7 +37,7 @@
 
             var distance = Math.sqrt((x * x) + (y * y) + (z * z));
 
-            if (this.radiusWorld < distance)
+            if (Math.abs(this.radiusWorld - distance) < BABYLON.Engine.Epsilon)
                 return false;
 
             return true;

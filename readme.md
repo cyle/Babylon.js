@@ -9,6 +9,10 @@ Online [assets converter](http://www.babylonjs.com/converter.html) for .FBX, .DA
 
 Online [sandbox](http://www.babylonjs.com/sandbox) where you can test your .babylon scenes with a simple drag'n'drop
 
+Online [playground](http://www.babylonjs.com/playground) where you can interactively learn how to use babylon.js
+
+Online [shader creation tool](http://www.babylonjs.com/cyos/) where you can learn how to create GLSL shaders
+
 ## Documentation
 - [Wiki](https://github.com/babylonjs/babylon.js/wiki)
 - [Tutorials](https://github.com/BabylonJS/Babylon.js/wiki/Tutorials)
@@ -33,6 +37,7 @@ Online [sandbox](http://www.babylonjs.com/sandbox) where you can test your .baby
  - Selection octrees
  - Offline mode (Assets are saved locally to prevent reloading them)
  - Incremental loading
+ - Hardware accelerated instances
 - Standard material is a per pixel material that supports:
  - Diffuse lightning and texture
  - Ambient lightning and texture
@@ -71,6 +76,7 @@ Online [sandbox](http://www.babylonjs.com/sandbox) where you can test your .baby
  - Touch camera
  - Virtual Joysticks camera
  - Oculus Rift camera
+ - Gamepad camera
 -  Meshes: 
  - Mesh cloning
  - Dynamic meshes
@@ -80,6 +86,7 @@ Online [sandbox](http://www.babylonjs.com/sandbox) where you can test your .baby
  - Babylon scene file can be converted from .OBJ, .FBX, .MXB
  - Exporter for Blender
  - Exporter for Cheetah3d
+ - Exporter for 3ds Max
 
 ## Apache License 2.0 (Apache)
 

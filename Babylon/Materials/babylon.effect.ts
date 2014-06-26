@@ -60,7 +60,13 @@
             return this._attributesNames;
         }
 
-        public getAttribute(index: number): number {
+        public getAttributeLocation(index: number): number {
+            return this._attributes[index];
+        }
+
+        public getAttributeLocationByName(name: string): number {
+            var index = this._attributesNames.indexOf(name);
+
             return this._attributes[index];
         }
 
@@ -167,10 +173,10 @@
                     }
                     this._prepareEffect(vertexSourceCode, fragmentSourceCode, attributesNames, defines, optionalDefines, true);
                 } else {
-                    console.error("Unable to compile effect: " + this.name);
-                    console.error("Defines: " + defines);
-                    console.error("Optional defines: " + optionalDefines);
-                    console.error("Error: " + e.message);
+                    Tools.Error("Unable to compile effect: " + this.name);
+                    Tools.Error("Defines: " + defines);
+                    Tools.Error("Optional defines: " + optionalDefines);
+                    Tools.Error("Error: " + e.message);
                     this._compilationError = e.message;
 
                     if (this.onError) {
@@ -184,7 +190,7 @@
             this._engine._bindTexture(this._samplers.indexOf(channel), texture);
         }
 
-        public setTexture(channel: string, texture: Texture): void {
+        public setTexture(channel: string, texture: BaseTexture): void {
             this._engine.setTexture(this._samplers.indexOf(channel), texture);
         }
 

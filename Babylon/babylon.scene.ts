@@ -1,19 +1,7 @@
 ﻿module BABYLON {
-    var checkExtends = (v: Vector3, min: Vector3, max: Vector3) => {
-        if (v.x < min.x)
-            min.x = v.x;
-        if (v.y < min.y)
-            min.y = v.y;
-        if (v.z < min.z)
-            min.z = v.z;
-
-        if (v.x > max.x)
-            max.x = v.x;
-        if (v.y > max.y)
-            max.y = v.y;
-        if (v.z > max.z)
-            max.z = v.z;
-    };
+    export interface IDisposable {
+        dispose(): void;
+    }
 
     export class Scene {
         // Statics
@@ -28,6 +16,8 @@
         public ambientColor = new BABYLON.Color3(0, 0, 0);
         public beforeRender: () => void;
         public afterRender: () => void;
+        public beforeCameraRender: (camera: Camera) => void;
+        public afterCameraRender: (camera: Camera) => void;
         public forceWireframe = false;
         public clipPlane: Plane;
 
@@ -35,6 +25,9 @@
         private _onPointerMove: (evt: PointerEvent) => void;
         private _onPointerDown: (evt: PointerEvent) => void;
         public onPointerDown: (evt: PointerEvent, pickInfo: PickingInfo) => void;
+        private _pointerX: number;
+        private _pointerY: number;
+        private _meshUnderPointer: AbstractMesh;
 
         // Fog
         public fogMode = BABYLON.Scene.FOGMODE_NONE;
@@ -53,7 +46,10 @@
         public activeCamera: Camera;
 
         // Meshes
-        public meshes = new Array<Mesh>();
+        public meshes = new Array<AbstractMesh>();
+
+        // Geometries
+        private _geometries = new Array<Geometry>();
 
         public materials = new Array<Material>();
         public multiMaterials = new Array<MultiMaterial>();
@@ -86,6 +82,7 @@
         // Postprocesses
         public postProcessesEnabled = true;
         public postProcessManager: PostProcessManager;
+        public postProcessRenderPipelineManager: PostProcessRenderPipelineManager;
 
         // Customs render targets
         public renderTargetsEnabled = true;
@@ -93,6 +90,9 @@
 
         // Delay loading
         public useDelayedTextureLoading: boolean;
+
+        // Imported meshes
+        public importedMeshesFiles = new Array<String>();
 
         // Database
         public database; //ANY
@@ -117,23 +117,23 @@
         private _renderId = 0;
         private _executeWhenReadyTimeoutId = -1;
 
-        public _toBeDisposed = new SmartArray(256);
+        public _toBeDisposed = new SmartArray<IDisposable>(256);
 
         private _onReadyCallbacks = new Array<() => void>();
         private _pendingData = [];//ANY
 
         private _onBeforeRenderCallbacks = new Array<() => void>();
 
-        private _activeMeshes = new SmartArray(256);
-        private _processedMaterials = new SmartArray(256);
-        private _renderTargets = new SmartArray(256);
-        public _activeParticleSystems = new SmartArray(256);
-        private _activeSkeletons = new SmartArray(32);
+        private _activeMeshes = new SmartArray<Mesh>(256);
+        private _processedMaterials = new SmartArray<Material>(256);
+        private _renderTargets = new SmartArray<RenderTargetTexture>(256);
+        public _activeParticleSystems = new SmartArray<ParticleSystem>(256);
+        private _activeSkeletons = new SmartArray<Skeleton>(32);
 
         private _renderingManager: RenderingManager;
         private _physicsEngine: PhysicsEngine;
 
-        private _activeAnimatables = new Array<Internals.Animatable>();
+        public _activeAnimatables = new Array<Animatable>();
 
         private _transformMatrix = Matrix.Zero();
         private _pickWithRayInverseMatrix: Matrix;
@@ -147,9 +147,9 @@
         private _projectionMatrix: Matrix;
         private _frustumPlanes: Plane[];
 
-        private _selectionOctree: Octree;
+        private _selectionOctree: Octree<AbstractMesh>;
 
-        private _pointerOverMesh: Mesh;
+        private _pointerOverMesh: AbstractMesh;
 
         // Constructor
         constructor(engine: Engine) {
@@ -161,12 +161,26 @@
 
             this.postProcessManager = new PostProcessManager(this);
 
+            this.postProcessRenderPipelineManager = new PostProcessRenderPipelineManager();
+
             this._boundingBoxRenderer = new BoundingBoxRenderer(this);
 
             this.attachControl();
         }
 
         // Properties 
+        public get meshUnderPointer(): AbstractMesh {
+            return this._meshUnderPointer;
+        }
+
+        public get pointerX(): number {
+            return this._pointerX;
+        }
+
+        public get pointerY(): number {
+            return this._pointerY;
+        }
+
         public getBoundingBoxRenderer(): BoundingBoxRenderer {
             return this._boundingBoxRenderer;
         }
@@ -196,7 +210,7 @@
             return this._evaluateActiveMeshesDuration;
         }
 
-        public getActiveMeshes(): SmartArray {
+        public getActiveMeshes(): SmartArray<Mesh> {
             return this._activeMeshes;
         }
 
@@ -228,14 +242,20 @@
         public attachControl() {
             this._onPointerMove = (evt: PointerEvent) => {
                 var canvas = this._engine.getRenderingCanvas();
-                var pickResult = this.pick(evt.offsetX || evt.layerX, evt.offsetY || evt.layerY, mesh => mesh.actionManager && mesh.isPickable);
+
+                this._pointerX = evt.offsetX || evt.layerX;
+                this._pointerY = evt.offsetY || evt.layerY;
+                var pickResult = this.pick(this._pointerX, this._pointerY, mesh => mesh.actionManager && mesh.isPickable);
 
                 if (pickResult.hit) {
                     this.setPointerOverMesh(pickResult.pickedMesh);
                     canvas.style.cursor = "pointer";
+
+                    this._meshUnderPointer = pickResult.pickedMesh;
                 } else {
                     this.setPointerOverMesh(null);
                     canvas.style.cursor = "";
+                    this._meshUnderPointer = null;
                 }
             };
 
@@ -244,7 +264,18 @@
 
                 if (pickResult.hit) {
                     if (pickResult.pickedMesh.actionManager) {
-                        pickResult.pickedMesh.actionManager.processTrigger(BABYLON.ActionManager.OnPickTrigger);
+                        switch (evt.buttons) {
+                            case 1:
+                                pickResult.pickedMesh.actionManager.processTrigger(BABYLON.ActionManager.OnLeftPickTrigger, ActionEvent.CreateNew(pickResult.pickedMesh));
+                                break;
+                            case 2:
+                                pickResult.pickedMesh.actionManager.processTrigger(BABYLON.ActionManager.OnRightPickTrigger, ActionEvent.CreateNew(pickResult.pickedMesh));
+                                break;
+                            case 3:
+                                pickResult.pickedMesh.actionManager.processTrigger(BABYLON.ActionManager.OnCenterPickTrigger, ActionEvent.CreateNew(pickResult.pickedMesh));
+                                break;
+                        }
+                        pickResult.pickedMesh.actionManager.processTrigger(BABYLON.ActionManager.OnPickTrigger, ActionEvent.CreateNew(pickResult.pickedMesh));
                     }
                 }
 
@@ -271,19 +302,28 @@
                 return false;
             }
 
-            for (var index = 0; index < this.meshes.length; index++) {
-                var mesh = this.meshes[index];
-                var mat = mesh.material;
+            for (var index = 0; index < this._geometries.length; index++) {
+                var geometry = this._geometries[index];
 
-                if (mesh.delayLoadState === BABYLON.Engine.DELAYLOADSTATE_LOADING) {
+                if (geometry.delayLoadState === BABYLON.Engine.DELAYLOADSTATE_LOADING) {
+                    return false;
+                }
+            }
+
+            for (index = 0; index < this.meshes.length; index++) {
+                var mesh = this.meshes[index];
+
+                if (!mesh.isReady()) {
                     return false;
                 }
 
+                var mat = mesh.material;
                 if (mat) {
                     if (!mat.isReady(mesh)) {
                         return false;
                     }
                 }
+
             }
 
             return true;
@@ -346,56 +386,58 @@
         }
 
         // Animations
-        public beginAnimation(target: any, from: number, to: number, loop?: boolean, speedRatio?: number, onAnimationEnd?: () => void): void {
+        public beginAnimation(target: any, from: number, to: number, loop?: boolean, speedRatio?: number, onAnimationEnd?: () => void, animatable?: Animatable): Animatable {
             if (speedRatio === undefined) {
                 speedRatio = 1.0;
             }
 
+            this.stopAnimation(target);
+
+            if (!animatable) {
+                animatable = new Animatable(this, target, from, to, loop, speedRatio, onAnimationEnd);
+            }
+
             // Local animations
             if (target.animations) {
-                this.stopAnimation(target);
-
-                var animatable = new BABYLON.Internals.Animatable(target, from, to, loop, speedRatio, onAnimationEnd);
-
-                this._activeAnimatables.push(animatable);
+                animatable.appendAnimations(target, target.animations);
             }
 
             // Children animations
             if (target.getAnimatables) {
                 var animatables = target.getAnimatables();
                 for (var index = 0; index < animatables.length; index++) {
-                    this.beginAnimation(animatables[index], from, to, loop, speedRatio, onAnimationEnd);
+                    this.beginAnimation(animatables[index], from, to, loop, speedRatio, onAnimationEnd, animatable);
                 }
             }
+
+            return animatable;
         }
 
-        public beginDirectAnimation(target: any, animations: Animation[], from: number, to: number, loop?: boolean, speedRatio?: number, onAnimationEnd?: () => void): void {
+        public beginDirectAnimation(target: any, animations: Animation[], from: number, to: number, loop?: boolean, speedRatio?: number, onAnimationEnd?: () => void): Animatable {
             if (speedRatio === undefined) {
                 speedRatio = 1.0;
             }
 
-            var animatable = new BABYLON.Internals.Animatable(target, from, to, loop, speedRatio, onAnimationEnd, animations);
+            var animatable = new BABYLON.Animatable(this, target, from, to, loop, speedRatio, onAnimationEnd, animations);
 
-            this._activeAnimatables.push(animatable);
+            return animatable;
         }
 
-        public stopAnimation(target: any): void {
-            // Local animations
-            if (target.animations) {
-                for (var index = 0; index < this._activeAnimatables.length; index++) {
-                    if (this._activeAnimatables[index].target === target) {
-                        this._activeAnimatables.splice(index, 1);
-                        return;
-                    }
+        public getAnimatableByTarget(target: any): Animatable {
+            for (var index = 0; index < this._activeAnimatables.length; index++) {
+                if (this._activeAnimatables[index].target === target) {
+                    return this._activeAnimatables[index];
                 }
             }
 
-            // Children animations
-            if (target.getAnimatables) {
-                var animatables = target.getAnimatables();
-                for (index = 0; index < animatables.length; index++) {
-                    this.stopAnimation(animatables[index]);
-                }
+            return null;
+        }
+
+        public stopAnimation(target: any): void {
+            var animatable = this.getAnimatableByTarget(target);
+
+            if (animatable) {
+                animatable.stop();
             }
         }
 
@@ -518,7 +560,31 @@
             return null;
         }
 
-        public getMeshByID(id: string): Mesh {
+        public getGeometryByID(id: string): Geometry {
+            for (var index = 0; index < this._geometries.length; index++) {
+                if (this._geometries[index].id === id) {
+                    return this._geometries[index];
+                }
+            }
+
+            return null;
+        }
+
+        public pushGeometry(geometry: Geometry, force?: boolean): boolean {
+            if (!force && this.getGeometryByID(geometry.id)) {
+                return false;
+            }
+
+            this._geometries.push(geometry);
+
+            return true;
+        }
+
+        public getGeometries(): Geometry[] {
+            return this._geometries;
+        }
+
+        public getMeshByID(id: string): AbstractMesh {
             for (var index = 0; index < this.meshes.length; index++) {
                 if (this.meshes[index].id === id) {
                     return this.meshes[index];
@@ -528,7 +594,7 @@
             return null;
         }
 
-        public getLastMeshByID(id: string): Mesh {
+        public getLastMeshByID(id: string): AbstractMesh {
             for (var index = this.meshes.length - 1; index >= 0; index--) {
                 if (this.meshes[index].id === id) {
                     return this.meshes[index];
@@ -560,7 +626,7 @@
             return null;
         }
 
-        public getMeshByName(name: string): Mesh {
+        public getMeshByName(name: string): AbstractMesh {
             for (var index = 0; index < this.meshes.length; index++) {
                 if (this.meshes[index].name === name) {
                     return this.meshes[index];
@@ -604,9 +670,13 @@
             return (this._activeMeshes.indexOf(mesh) !== -1);
         }
 
-        private _evaluateSubMesh(subMesh: SubMesh, mesh: Mesh): void {
+        private _evaluateSubMesh(subMesh: SubMesh, mesh: AbstractMesh): void {
             if (mesh.subMeshes.length == 1 || subMesh.isInFrustum(this._frustumPlanes)) {
                 var material = subMesh.getMaterial();
+
+                if (mesh.showSubMeshesBoundingBox) {
+                    this._boundingBoxRenderer.renderList.push(subMesh.getBoundingInfo().boundingBox);
+                }
 
                 if (material) {
                     // Render targets
@@ -640,87 +710,35 @@
             }
 
             // Meshes
+            var meshes: AbstractMesh[];
+            var len: number;
+
             if (this._selectionOctree) { // Octree
                 var selection = this._selectionOctree.select(this._frustumPlanes);
-
-                for (var blockIndex = 0; blockIndex < selection.length; blockIndex++) {
-                    var block = selection.data[blockIndex];
-
-                    for (var meshIndex = 0; meshIndex < block.meshes.length; meshIndex++) {
-                        var mesh = block.meshes[meshIndex];
-
-                        if (Math.abs(mesh._renderId) !== this._renderId) {
-                            this._totalVertices += mesh.getTotalVertices();
-
-                            if (!mesh.isReady()) {
-                                continue;
-                            }
-
-                            mesh.computeWorldMatrix();
-                            mesh._renderId = 0;
-                        }
-
-                        if (mesh._renderId === this._renderId || (mesh._renderId === 0 && mesh.isEnabled() && mesh.isVisible && mesh.visibility > 0 && mesh.isInFrustum(this._frustumPlanes))) {
-                            if (mesh._renderId === 0) {
-                                this._activeMeshes.push(mesh);
-                            }
-                            mesh._renderId = this._renderId;
-
-                            if (mesh.showBoundingBox) {
-                                this._boundingBoxRenderer.renderList.push(mesh);
-                            }
-
-                            if (mesh.skeleton) {
-                                this._activeSkeletons.pushNoDuplicate(mesh.skeleton);
-                            }
-
-                            var subMeshes = block.subMeshes[meshIndex];
-                            for (subIndex = 0; subIndex < subMeshes.length; subIndex++) {
-                                subMesh = subMeshes[subIndex];
-
-                                if (subMesh._renderId === this._renderId) {
-                                    continue;
-                                }
-                                subMesh._renderId = this._renderId;
-
-                                this._evaluateSubMesh(subMesh, mesh);
-                            }
-                        } else {
-                            mesh._renderId = -this._renderId;
-                        }
-                    }
-                }
+                meshes = selection.data;
+                len = selection.length;
             } else { // Full scene traversal
-                for (meshIndex = 0; meshIndex < this.meshes.length; meshIndex++) {
-                    mesh = this.meshes[meshIndex];
+                len = this.meshes.length;
+                meshes = this.meshes;
+            }
 
-                    this._totalVertices += mesh.getTotalVertices();
+            for (var meshIndex = 0; meshIndex < len; meshIndex++) {
+                var mesh = meshes[meshIndex];
 
-                    if (!mesh.isReady()) {
-                        continue;
-                    }
+                this._totalVertices += mesh.getTotalVertices();
 
-                    mesh.computeWorldMatrix();
+                if (!mesh.isReady()) {
+                    continue;
+                }
 
-                    if (mesh.isEnabled() && mesh.isVisible && mesh.visibility > 0 && mesh.isInFrustum(this._frustumPlanes)) {
-                        this._activeMeshes.push(mesh);
+                mesh.computeWorldMatrix();
+                mesh._preActivate();
 
-                        if (mesh.skeleton) {
-                            this._activeSkeletons.pushNoDuplicate(mesh.skeleton);
-                        }
+                if (mesh.isEnabled() && mesh.isVisible && mesh.visibility > 0 && ((mesh.layerMask & this.activeCamera.layerMask) != 0) && mesh.isInFrustum(this._frustumPlanes)) {
+                    this._activeMeshes.push(mesh);
+                    mesh._activate(this._renderId);
 
-                        if (mesh.showBoundingBox) {
-                            this._boundingBoxRenderer.renderList.push(mesh);
-                        }
-
-                        if (mesh.subMeshes) {
-                            for (var subIndex = 0; subIndex < mesh.subMeshes.length; subIndex++) {
-                                var subMesh = mesh.subMeshes[subIndex];
-
-                                this._evaluateSubMesh(subMesh, mesh);
-                            }
-                        }
-                    }
+                    this._activeMesh(mesh);
                 }
             }
 
@@ -730,6 +748,10 @@
                 for (var particleIndex = 0; particleIndex < this.particleSystems.length; particleIndex++) {
                     var particleSystem = this.particleSystems[particleIndex];
 
+                    if (!particleSystem.isStarted()) {
+                        continue;
+                    }
+
                     if (!particleSystem.emitter.position || (particleSystem.emitter && particleSystem.emitter.isEnabled())) {
                         this._activeParticleSystems.push(particleSystem);
                         particleSystem.animate();
@@ -737,6 +759,38 @@
                 }
             }
             this._particlesDuration += new Date().getTime() - beforeParticlesDate;
+        }
+
+        private _activeMesh(mesh: AbstractMesh): void {
+            if (mesh.skeleton) {
+                this._activeSkeletons.pushNoDuplicate(mesh.skeleton);
+            }
+
+            if (mesh.showBoundingBox) {
+                this._boundingBoxRenderer.renderList.push(mesh.getBoundingInfo().boundingBox);
+            }
+
+            if (mesh.subMeshes) {
+                // Submeshes Octrees
+                var len: number;
+                var subMeshes: SubMesh[];
+
+                if (mesh._submeshesOctree && mesh.useOctreeForRenderingSelection) {
+                    var intersections = mesh._submeshesOctree.select(this._frustumPlanes);
+
+                    len = intersections.length;
+                    subMeshes = intersections.data;
+                } else {
+                    subMeshes = mesh.subMeshes;
+                    len = subMeshes.length;
+                }
+
+                for (var subIndex = 0; subIndex < len; subIndex++) {
+                    var subMesh = subMeshes[subIndex];
+
+                    this._evaluateSubMesh(subMesh, mesh);
+                }
+            }
         }
 
         public updateTransformMatrix(force?: boolean): void {
@@ -758,6 +812,10 @@
             this._renderId++;
             this.updateTransformMatrix();
 
+            if (this.beforeCameraRender) {
+                this.beforeCameraRender(this.activeCamera);
+            }
+
             // Meshes
             var beforeEvaluateActiveMeshesDate = new Date().getTime();
             this._evaluateActiveMeshes();
@@ -772,17 +830,21 @@
 
             // Customs render targets registration
             for (var customIndex = 0; customIndex < this.customRenderTargets.length; customIndex++) {
-                this._renderTargets.push(this.customRenderTargets[customIndex]);
+                var renderTarget = this.customRenderTargets[customIndex];
+                this._renderTargets.push(renderTarget);
             }
 
             // Render targets
             var beforeRenderTargetDate = new Date().getTime();
             if (this.renderTargetsEnabled) {
                 for (var renderIndex = 0; renderIndex < this._renderTargets.length; renderIndex++) {
-                    var renderTarget = this._renderTargets.data[renderIndex];
-                    this._renderId++;
-                    renderTarget.render();
+                    renderTarget = this._renderTargets.data[renderIndex];
+                    if (renderTarget._shouldRender()) {
+                        this._renderId++;
+                        renderTarget.render();
+                    }
                 }
+                this._renderId++;
             }
 
             if (this._renderTargets.length > 0) { // Restore back buffer
@@ -841,6 +903,11 @@
 
             // Reset some special arrays
             this._renderTargets.reset();
+
+            if (this.afterCameraRender) {
+                this.afterCameraRender(this.activeCamera);
+            }
+
         }
 
         private _processSubCameras(camera: Camera): void {
@@ -873,7 +940,7 @@
 
             // Actions
             if (this.actionManager) {
-                this.actionManager.processTrigger(ActionManager.OnEveryFrameTrigger);
+                this.actionManager.processTrigger(ActionManager.OnEveryFrameTrigger, null);
             }
 
             // Before render
@@ -907,6 +974,9 @@
                     this._renderTargets.push(shadowGenerator.getShadowMap());
                 }
             }
+
+            // RenderPipeline
+            this.postProcessRenderPipelineManager.update();
 
             // Multi-cameras?
             if (this.activeCameras.length > 0) {
@@ -1058,9 +1128,9 @@
         }
 
         // Octrees
-        public createOrUpdateSelectionOctree(): void {
+        public createOrUpdateSelectionOctree(maxCapacity = 64, maxDepth = 2): Octree<AbstractMesh> {
             if (!this._selectionOctree) {
-                this._selectionOctree = new BABYLON.Octree();
+                this._selectionOctree = new BABYLON.Octree<AbstractMesh>(Octree.CreationFuncForMeshes, maxCapacity, maxDepth);
             }
 
             var min = new BABYLON.Vector3(Number.MAX_VALUE, Number.MAX_VALUE, Number.MAX_VALUE);
@@ -1072,12 +1142,14 @@
                 var minBox = mesh.getBoundingInfo().boundingBox.minimumWorld;
                 var maxBox = mesh.getBoundingInfo().boundingBox.maximumWorld;
 
-                checkExtends(minBox, min, max);
-                checkExtends(maxBox, min, max);
+                Tools.CheckExtends(minBox, min, max);
+                Tools.CheckExtends(maxBox, min, max);
             }
 
             // Update octree
             this._selectionOctree.update(min, max, this.meshes);
+
+            return this._selectionOctree;
         }
 
         // Picking
@@ -1095,13 +1167,13 @@
             var viewport = cameraViewport.toGlobal(engine);
 
             // Moving coordinates to local viewport world
-            x = x - viewport.x;
-            y = y - (this._engine.getRenderHeight() - viewport.y - viewport.height);
+            x = x / this._engine.getHardwareScalingLevel() - viewport.x;
+            y = y / this._engine.getHardwareScalingLevel() - (this._engine.getRenderHeight() - viewport.y - viewport.height);
 
-            return BABYLON.Ray.CreateNew(x * this._engine.getHardwareScalingLevel(), y * this._engine.getHardwareScalingLevel(), viewport.width, viewport.height, world ? world : BABYLON.Matrix.Identity(), camera.getViewMatrix(), camera.getProjectionMatrix());
+            return BABYLON.Ray.CreateNew(x, y, viewport.width, viewport.height, world ? world : BABYLON.Matrix.Identity(), camera.getViewMatrix(), camera.getProjectionMatrix());
         }
 
-        private _internalPick(rayFunction: (world: Matrix) => Ray, predicate: (mesh: Mesh) => boolean, fastCheck?: boolean): PickingInfo {
+        private _internalPick(rayFunction: (world: Matrix) => Ray, predicate: (mesh: AbstractMesh) => boolean, fastCheck?: boolean): PickingInfo {
             var pickingInfo = null;
 
             for (var meshIndex = 0; meshIndex < this.meshes.length; meshIndex++) {
@@ -1119,7 +1191,7 @@
                 var ray = rayFunction(world);
 
                 var result = mesh.intersects(ray, fastCheck);
-                if (!result.hit)
+                if (!result || !result.hit)
                     continue;
 
                 if (!fastCheck && pickingInfo != null && result.distance >= pickingInfo.distance)
@@ -1155,22 +1227,22 @@
             }, predicate, fastCheck);
         }
 
-        public setPointerOverMesh(mesh: Mesh): void {
+        public setPointerOverMesh(mesh: AbstractMesh): void {
             if (this._pointerOverMesh === mesh) {
                 return;
             }
 
             if (this._pointerOverMesh && this._pointerOverMesh.actionManager) {
-                this._pointerOverMesh.actionManager.processTrigger(ActionManager.OnPointerOutTrigger);
+                this._pointerOverMesh.actionManager.processTrigger(ActionManager.OnPointerOutTrigger, ActionEvent.CreateNew(this._pointerOverMesh));
             }
 
             this._pointerOverMesh = mesh;
             if (this._pointerOverMesh && this._pointerOverMesh.actionManager) {
-                this._pointerOverMesh.actionManager.processTrigger(ActionManager.OnPointerOverTrigger);
+                this._pointerOverMesh.actionManager.processTrigger(ActionManager.OnPointerOverTrigger, ActionEvent.CreateNew(this._pointerOverMesh));
             }
         }
 
-        public getPointerOverMesh(): Mesh {
+        public getPointerOverMesh(): AbstractMesh {
             return this._pointerOverMesh;
         }
 
@@ -1179,7 +1251,7 @@
             return this._physicsEngine;
         }
 
-        public enablePhysics(gravity: Vector3, plugin?: PhysicsEnginePlugin): boolean {
+        public enablePhysics(gravity: Vector3, plugin?: IPhysicsEnginePlugin): boolean {
             if (this._physicsEngine) {
                 return true;
             }

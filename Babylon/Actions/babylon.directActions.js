@@ -25,6 +25,20 @@ var BABYLON;
     })(BABYLON.Action);
     BABYLON.SwitchBooleanAction = SwitchBooleanAction;
 
+    var SetStateAction = (function (_super) {
+        __extends(SetStateAction, _super);
+        function SetStateAction(trigger, target, value, condition) {
+            _super.call(this, trigger, condition);
+            this.value = value;
+            this._target = target;
+        }
+        SetStateAction.prototype.execute = function () {
+            this._target.state = this.value;
+        };
+        return SetStateAction;
+    })(BABYLON.Action);
+    BABYLON.SetStateAction = SetStateAction;
+
     var SetValueAction = (function (_super) {
         __extends(SetValueAction, _super);
         function SetValueAction(trigger, target, propertyPath, value, condition) {
@@ -58,7 +72,7 @@ var BABYLON;
             this._property = this._getProperty(this.propertyPath);
 
             if (typeof this._target[this._property] !== "number") {
-                console.warn("Warning: IncrementValueAction can only be used with number values");
+                BABYLON.Tools.Warn("Warning: IncrementValueAction can only be used with number values");
             }
         };
 
@@ -109,7 +123,7 @@ var BABYLON;
     var DoNothingAction = (function (_super) {
         __extends(DoNothingAction, _super);
         function DoNothingAction(trigger, condition) {
-            if (typeof trigger === "undefined") { trigger = BABYLON.ActionManager.NoneTrigger; }
+            if (typeof trigger === "undefined") { trigger = BABYLON.ActionManager.NothingTrigger; }
             _super.call(this, trigger, condition);
         }
         DoNothingAction.prototype.execute = function () {
@@ -131,9 +145,9 @@ var BABYLON;
             }
         };
 
-        CombineAction.prototype.execute = function () {
+        CombineAction.prototype.execute = function (evt) {
             for (var index = 0; index < this.children.length; index++) {
-                this.children[index].execute();
+                this.children[index].execute(evt);
             }
         };
         return CombineAction;
@@ -146,8 +160,8 @@ var BABYLON;
             _super.call(this, trigger, condition);
             this.func = func;
         }
-        ExecuteCodeAction.prototype.execute = function () {
-            this.func();
+        ExecuteCodeAction.prototype.execute = function (evt) {
+            this.func(evt);
         };
         return ExecuteCodeAction;
     })(BABYLON.Action);

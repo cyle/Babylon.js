@@ -8,6 +8,8 @@
         public minimumWorld: Vector3;
         public maximumWorld: Vector3;
 
+        private _worldMatrix: Matrix;
+
         constructor(public minimum: Vector3, public maximum: Vector3) {
             // Bounding vectors            
             this.vectors.push(this.minimum.clone());
@@ -47,6 +49,10 @@
         }
 
         // Methods
+        public getWorldMatrix(): Matrix {
+            return this._worldMatrix;
+        }
+
         public _update(world: Matrix): void {
             Vector3.FromFloatsToRef(Number.MAX_VALUE, Number.MAX_VALUE, Number.MAX_VALUE, this.minimumWorld);
             Vector3.FromFloatsToRef(-Number.MAX_VALUE, -Number.MAX_VALUE, -Number.MAX_VALUE, this.maximumWorld);
@@ -77,6 +83,8 @@
             Vector3.FromFloatArrayToRef(world.m, 0, this.directions[0]);
             Vector3.FromFloatArrayToRef(world.m, 4, this.directions[1]);
             Vector3.FromFloatArrayToRef(world.m, 8, this.directions[2]);
+
+            this._worldMatrix = world;
         }
 
         public isInFrustum(frustumPlanes: Plane[]): boolean {
@@ -84,22 +92,22 @@
         }
 
         public intersectsPoint(point: Vector3): boolean {
-            if (this.maximumWorld.x < point.x || this.minimumWorld.x > point.x)
+            var delta = Engine.Epsilon;
+
+            if (this.maximumWorld.x - point.x < delta || delta > point.x - this.minimumWorld.x)
                 return false;
 
-            if (this.maximumWorld.y < point.y || this.minimumWorld.y > point.y)
+            if (this.maximumWorld.y - point.y < delta || delta > point.y - this.minimumWorld.y)
                 return false;
 
-            if (this.maximumWorld.z < point.z || this.minimumWorld.z > point.z)
+            if (this.maximumWorld.z - point.z < delta || delta > point.z - this.minimumWorld.z)
                 return false;
 
             return true;
         }
 
         public intersectsSphere(sphere: BoundingSphere): boolean {
-            var vector = BABYLON.Vector3.Clamp(sphere.centerWorld, this.minimumWorld, this.maximumWorld);
-            var num = BABYLON.Vector3.DistanceSquared(sphere.centerWorld, vector);
-            return (num <= (sphere.radiusWorld * sphere.radiusWorld));
+            return BoundingBox.IntersectsSphere(this.minimumWorld, this.maximumWorld, sphere.centerWorld, sphere.radiusWorld);
         }
 
         public intersectsMinMax(min: Vector3, max: Vector3): boolean {
@@ -127,6 +135,12 @@
                 return false;
 
             return true;
+        }
+
+        public static IntersectsSphere(minPoint: Vector3, maxPoint: Vector3, sphereCenter: Vector3, sphereRadius: number): boolean {
+            var vector = BABYLON.Vector3.Clamp(sphereCenter, minPoint, maxPoint);
+            var num = BABYLON.Vector3.DistanceSquared(sphereCenter, vector);
+            return (num <= (sphereRadius * sphereRadius));
         }
 
         public static IsInFrustum(boundingVectors: Vector3[], frustumPlanes: Plane[]): boolean {

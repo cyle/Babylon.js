@@ -1,8 +1,8 @@
 bl_info = {
     "name": "Babylon.js",
     "author": "David Catuhe",
-    "version": (1, 1),
-    "blender": (2, 67, 0),
+    "version": (1, 3),
+    "blender": (2, 69, 0),
     "location": "File > Export > Babylon.js (.babylon)",
     "description": "Export Babylon.js scenes (.babylon)",
     "warning": "",
@@ -46,9 +46,11 @@ class Export_babylon(bpy.types.Operator, ExportHelper):
     filename_ext = ".babylon"
     filepath = ""
     
+    materialsNameSpace = None
+    
     # global_scale = FloatProperty(name="Scale", min=0.01, max=1000.0, default=1.0)
 
-    def execute(self, context):
+    def execute(self, context):            
            return Export_babylon.save(self, context, **self.as_keywords(ignore=("check_existing", "filter_glob", "global_scale")))
            
     def mesh_triangulate(mesh):
@@ -85,8 +87,10 @@ class Export_babylon(bpy.types.Operator, ExportHelper):
     def write_color(file_handler, name, color):
         file_handler.write(",\""+name+"\":[" + "%.4f,%.4f,%.4f"%(color.r,color.g,color.b) + "]")
 
-    def write_vector(file_handler, name, vector):
-        file_handler.write(",\""+name+"\":[" + "%.4f,%.4f,%.4f"%(vector.x,vector.z,vector.y) + "]")
+    def write_vector(file_handler, name, vector, noComma=False):
+        if noComma == False:
+            file_handler.write(",")
+        file_handler.write("\""+name+"\":[" + "%.4f,%.4f,%.4f"%(vector.x,vector.z,vector.y) + "]")
 
     def write_quaternion(file_handler, name, quaternion):
         file_handler.write(",\""+name+"\":[" + "%.4f,%.4f,%.4f,%.4f"%(quaternion.x,quaternion.z,quaternion.y, -quaternion.w) + "]")
@@ -165,6 +169,8 @@ class Export_babylon(bpy.types.Operator, ExportHelper):
         Export_babylon.write_float(file_handler, "type", light_type)
         if light_type == 0:
             Export_babylon.write_vector(file_handler, "position", object.location)
+            if object.data.use_sphere:
+                Export_babylon.write_float(file_handler, "range", object.data.distance)
         elif light_type == 1:
             direction = Export_babylon.getDirection(object.matrix_world)
             Export_babylon.write_vector(file_handler, "position", object.location)
@@ -175,6 +181,8 @@ class Export_babylon(bpy.types.Operator, ExportHelper):
             Export_babylon.write_vector(file_handler, "direction", direction)
             Export_babylon.write_float(file_handler, "angle", object.data.spot_size)
             Export_babylon.write_float(file_handler, "exponent", object.data.spot_blend * 2)
+            if object.data.use_sphere:
+                Export_babylon.write_float(file_handler, "range", object.data.distance)
         else:
             matrix_world = object.matrix_world.copy()
             matrix_world.translation = mathutils.Vector((0, 0, 0))
@@ -255,8 +263,8 @@ class Export_babylon(bpy.types.Operator, ExportHelper):
         
     def export_material(material, scene, file_handler, filepath):       
         file_handler.write("{")
-        Export_babylon.write_string(file_handler, "name", material.name, True)      
-        Export_babylon.write_string(file_handler, "id", material.name)
+        Export_babylon.write_string(file_handler, "name", Export_babylon.materialsNameSpace + material.name, True)      
+        Export_babylon.write_string(file_handler, "id", Export_babylon.materialsNameSpace + material.name)
         Export_babylon.write_color(file_handler, "ambient", material.ambient * material.diffuse_color)
         Export_babylon.write_color(file_handler, "diffuse", material.diffuse_intensity * material.diffuse_color)
         Export_babylon.write_color(file_handler, "specular", material.specular_intensity * material.specular_color)
@@ -293,14 +301,14 @@ class Export_babylon(bpy.types.Operator, ExportHelper):
     def export_multimaterial(multimaterial, scene, file_handler):       
         file_handler.write("{")
         Export_babylon.write_string(file_handler, "name", multimaterial.name, True)
-        Export_babylon.write_string(file_handler, "id", multimaterial.name)
+        Export_babylon.write_string(file_handler, "id"  , multimaterial.name)
         
         file_handler.write(",\"materials\":[")
         first = True
         for materialName in multimaterial.materials:
             if first != True:
                 file_handler.write(",")
-            file_handler.write("\"" + materialName +"\"")
+            file_handler.write("\"" + Export_babylon.materialsNameSpace + materialName +"\"")
             first = False
         file_handler.write("]")
         file_handler.write("}")
@@ -599,7 +607,7 @@ class Export_babylon(bpy.types.Operator, ExportHelper):
         
         if len(object.material_slots) == 1:
             material = object.material_slots[0].material
-            Export_babylon.write_string(file_handler, "materialId", object.material_slots[0].name)
+            Export_babylon.write_string(file_handler, "materialId", Export_babylon.materialsNameSpace + object.material_slots[0].name)
             
             if material.game_settings.face_orientation != "BILLBOARD":
                 billboardMode = 0
@@ -607,7 +615,7 @@ class Export_babylon(bpy.types.Operator, ExportHelper):
                 billboardMode = 7
         elif len(object.material_slots) > 1:
             multimat = MultiMaterial()
-            multimat.name = "Multimaterial#" + str(len(multiMaterials))
+            multimat.name = Export_babylon.materialsNameSpace + "Multimaterial#" + str(len(multiMaterials))
             multimat.materials = []
             Export_babylon.write_string(file_handler, "materialId", multimat.name)
             for mat in object.material_slots:
@@ -626,8 +634,8 @@ class Export_babylon(bpy.types.Operator, ExportHelper):
             Export_babylon.write_vector(file_handler, "position", mathutils.Vector((0, 0, 0)))
             Export_babylon.write_vectorScaled(file_handler, "rotation", mathutils.Vector((0, 0, 0)), 1)
             Export_babylon.write_vector(file_handler, "scaling", mathutils.Vector((1, 1, 1)))
-
-        Export_babylon.write_bool(file_handler, "isVisible", object.is_visible(scene))
+		
+        Export_babylon.write_bool(file_handler, "isVisible", not object.hide_render)
         Export_babylon.write_bool(file_handler, "isEnabled", True)
         Export_babylon.write_bool(file_handler, "useFlatShading", object.data.useFlatShading)
         Export_babylon.write_bool(file_handler, "checkCollisions", object.data.checkCollisions)
@@ -691,8 +699,7 @@ class Export_babylon(bpy.types.Operator, ExportHelper):
             first = False
         file_handler.write("]")
 
-        #Export Animations
-        
+        # Export Animations        
         rotAnim = False
         locAnim = False
         scaAnim = False
@@ -718,6 +725,26 @@ class Export_babylon(bpy.types.Operator, ExportHelper):
                 Export_babylon.write_int(file_handler, "autoAnimateTo", bpy.context.scene.frame_end - bpy.context.scene.frame_start + 1)
                 Export_babylon.write_bool(file_handler, "autoAnimateLoop", True)
 
+        # Instances
+        first = True
+        file_handler.write(",\"instances\":[")
+        for other in [object for object in scene.objects]:
+            if other.type == 'MESH' and other != object: 
+                if other.data.name == object.data.name:
+                    if first == False:
+                        file_handler.write(",")
+                    file_handler.write("{")
+                    world = other.matrix_world
+
+                    loc, rot, scale = world.decompose()
+                    Export_babylon.write_string(file_handler, "name", other.name, True)
+                    Export_babylon.write_vector(file_handler, "position", loc)
+                    Export_babylon.write_vectorScaled(file_handler, "rotation", rot.to_euler("XYZ"), -1)
+                    Export_babylon.write_vector(file_handler, "scaling", scale)
+
+                    file_handler.write("}")
+                    first = False
+        file_handler.write("]")
 
         # Closing
         file_handler.write("}")
@@ -779,13 +806,13 @@ class Export_babylon(bpy.types.Operator, ExportHelper):
         file_handler.write("]")         
         file_handler.write("}") 
 
-    def export_bone_matrix(armature, bone, label, file_handler):
+    def get_bone_matrix(armature, bone):
         SystemMatrix = Matrix.Scale(-1, 4, Vector((0, 0, 1))) * Matrix.Rotation(radians(-90), 4, 'X')
 
         if (bone.parent):
-            Export_babylon.write_matrix4(file_handler, label, (SystemMatrix * armature.matrix_world * bone.parent.matrix).inverted() * (SystemMatrix * armature.matrix_world * bone.matrix))
+            return (SystemMatrix * armature.matrix_world * bone.parent.matrix).inverted() * (SystemMatrix * armature.matrix_world * bone.matrix)
         else:
-            Export_babylon.write_matrix4(file_handler, label, SystemMatrix * armature.matrix_world * bone.matrix)
+            return SystemMatrix * armature.matrix_world * bone.matrix
 
 
     def export_bones(armature, scene, file_handler, id):
@@ -807,7 +834,7 @@ class Export_babylon(bpy.types.Operator, ExportHelper):
             Export_babylon.write_string(file_handler, "name", bone.name, True)
             Export_babylon.write_int(file_handler, "index", j)
 
-            Export_babylon.export_bone_matrix(armature, bone, "matrix", file_handler)
+            Export_babylon.write_matrix4(file_handler, "matrix", Export_babylon.get_bone_matrix(armature, bone))
 
             if (bone.parent):
                 parentId = 0
@@ -844,15 +871,22 @@ class Export_babylon(bpy.types.Operator, ExportHelper):
 
         #keys
         file_handler.write(",\"keys\":[")
+
+        previousBoneMatrix = None
                         
         for Frame in range(start_frame, end_frame + 1):
                 
+            bpy.context.scene.frame_set(Frame)
+            currentBoneMatrix = Export_babylon.get_bone_matrix(armature, bone)
+
+            if (Frame != end_frame and currentBoneMatrix == previousBoneMatrix):
+                continue
+
             file_handler.write("{")
 
             Export_babylon.write_int(file_handler, "frame", Frame, True)
-            bpy.context.scene.frame_set(Frame)
-
-            Export_babylon.export_bone_matrix(armature, bone, "values", file_handler)
+            Export_babylon.write_matrix4(file_handler, "values", currentBoneMatrix)
+            previousBoneMatrix = currentBoneMatrix
 
             if Frame == end_frame:
                 file_handler.write("}")
@@ -873,6 +907,13 @@ class Export_babylon(bpy.types.Operator, ExportHelper):
         use_triangulate=True,
         use_compress=False):
 
+        # assign materialsNameSpace, based on OS
+        filepathMinusExtension = filepath.rpartition('.')[0]
+        if filepathMinusExtension.find('\\') != -1:
+            Export_babylon.materialsNameSpace = filepathMinusExtension.rpartition('\\')[2] + '.'
+        else:
+            Export_babylon.materialsNameSpace = filepathMinusExtension.rpartition('/')[2] + '.'
+                
         # Open file
         file_handler = open(filepath, 'w')  
             
@@ -891,6 +932,8 @@ class Export_babylon(bpy.types.Operator, ExportHelper):
         bpy.ops.screen.animation_cancel()
         currentFrame = bpy.context.scene.frame_current
         bpy.context.scene.frame_set(0)
+
+        Export_babylon.alreadyExportedMeshAsInstance = []
     
         file_handler.write("{")
         file_handler.write("\"autoClear\":true")
@@ -951,6 +994,22 @@ class Export_babylon(bpy.types.Operator, ExportHelper):
         first = True
         for object in [object for object in scene.objects]:
             if object.type == 'MESH' or object.type == 'EMPTY':
+                # Check if current object is an instance
+                currentFound = False
+                mustSkipThisOne = False
+                for other in [object for object in scene.objects]:
+                    if other.type == 'MESH': 
+                        if other == object:
+                            currentFound = True
+                            continue
+
+                        if currentFound and other.data.name == object.data.name:
+                            mustSkipThisOne = True
+                            break
+
+                if mustSkipThisOne:
+                    continue
+
                 if first != True:
                     file_handler.write(",")
 

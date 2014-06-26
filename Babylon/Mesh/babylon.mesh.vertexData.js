@@ -3,37 +3,113 @@
     var VertexData = (function () {
         function VertexData() {
         }
+        VertexData.prototype.set = function (data, kind) {
+            switch (kind) {
+                case BABYLON.VertexBuffer.PositionKind:
+                    this.positions = data;
+                    break;
+                case BABYLON.VertexBuffer.NormalKind:
+                    this.normals = data;
+                    break;
+                case BABYLON.VertexBuffer.UVKind:
+                    this.uvs = data;
+                    break;
+                case BABYLON.VertexBuffer.UV2Kind:
+                    this.uv2s = data;
+                    break;
+                case BABYLON.VertexBuffer.ColorKind:
+                    this.colors = data;
+                    break;
+                case BABYLON.VertexBuffer.MatricesIndicesKind:
+                    this.matricesIndices = data;
+                    break;
+                case BABYLON.VertexBuffer.MatricesWeightsKind:
+                    this.matricesWeights = data;
+                    break;
+            }
+        };
+
         VertexData.prototype.applyToMesh = function (mesh, updatable) {
+            this._applyTo(mesh, updatable);
+        };
+
+        VertexData.prototype.applyToGeometry = function (geometry, updatable) {
+            this._applyTo(geometry, updatable);
+        };
+
+        VertexData.prototype.updateMesh = function (mesh, updateExtends, makeItUnique) {
+            this._update(mesh);
+        };
+
+        VertexData.prototype.updateGeometry = function (geometry, updateExtends, makeItUnique) {
+            this._update(geometry);
+        };
+
+        VertexData.prototype._applyTo = function (meshOrGeometry, updatable) {
             if (this.positions) {
-                mesh.setVerticesData(this.positions, BABYLON.VertexBuffer.PositionKind, updatable);
+                meshOrGeometry.setVerticesData(BABYLON.VertexBuffer.PositionKind, this.positions, updatable);
             }
 
             if (this.normals) {
-                mesh.setVerticesData(this.normals, BABYLON.VertexBuffer.NormalKind, updatable);
+                meshOrGeometry.setVerticesData(BABYLON.VertexBuffer.NormalKind, this.normals, updatable);
             }
 
             if (this.uvs) {
-                mesh.setVerticesData(this.uvs, BABYLON.VertexBuffer.UVKind, updatable);
+                meshOrGeometry.setVerticesData(BABYLON.VertexBuffer.UVKind, this.uvs, updatable);
             }
 
             if (this.uv2s) {
-                mesh.setVerticesData(this.uv2s, BABYLON.VertexBuffer.UV2Kind, updatable);
+                meshOrGeometry.setVerticesData(BABYLON.VertexBuffer.UV2Kind, this.uv2s, updatable);
             }
 
             if (this.colors) {
-                mesh.setVerticesData(this.colors, BABYLON.VertexBuffer.ColorKind, updatable);
+                meshOrGeometry.setVerticesData(BABYLON.VertexBuffer.ColorKind, this.colors, updatable);
             }
 
             if (this.matricesIndices) {
-                mesh.setVerticesData(this.matricesIndices, BABYLON.VertexBuffer.MatricesIndicesKind, updatable);
+                meshOrGeometry.setVerticesData(BABYLON.VertexBuffer.MatricesIndicesKind, this.matricesIndices, updatable);
             }
 
             if (this.matricesWeights) {
-                mesh.setVerticesData(this.matricesWeights, BABYLON.VertexBuffer.MatricesWeightsKind, updatable);
+                meshOrGeometry.setVerticesData(BABYLON.VertexBuffer.MatricesWeightsKind, this.matricesWeights, updatable);
             }
 
             if (this.indices) {
-                mesh.setIndices(this.indices);
+                meshOrGeometry.setIndices(this.indices);
+            }
+        };
+
+        VertexData.prototype._update = function (meshOrGeometry, updateExtends, makeItUnique) {
+            if (this.positions) {
+                meshOrGeometry.updateVerticesData(BABYLON.VertexBuffer.PositionKind, this.positions, updateExtends, makeItUnique);
+            }
+
+            if (this.normals) {
+                meshOrGeometry.updateVerticesData(BABYLON.VertexBuffer.NormalKind, this.normals, updateExtends, makeItUnique);
+            }
+
+            if (this.uvs) {
+                meshOrGeometry.updateVerticesData(BABYLON.VertexBuffer.UVKind, this.uvs, updateExtends, makeItUnique);
+            }
+
+            if (this.uv2s) {
+                meshOrGeometry.updateVerticesData(BABYLON.VertexBuffer.UV2Kind, this.uv2s, updateExtends, makeItUnique);
+            }
+
+            if (this.colors) {
+                meshOrGeometry.updateVerticesData(BABYLON.VertexBuffer.ColorKind, this.colors, updateExtends, makeItUnique);
+            }
+
+            if (this.matricesIndices) {
+                meshOrGeometry.updateVerticesData(BABYLON.VertexBuffer.MatricesIndicesKind, this.matricesIndices, updateExtends, makeItUnique);
+            }
+
+            if (this.matricesWeights) {
+                meshOrGeometry.updateVerticesData(BABYLON.VertexBuffer.MatricesWeightsKind, this.matricesWeights, updateExtends, makeItUnique);
+            }
+
+            if (this.indices) {
+                meshOrGeometry.setIndices(this.indices);
             }
         };
 
@@ -146,37 +222,45 @@
 
         // Statics
         VertexData.ExtractFromMesh = function (mesh) {
+            return VertexData._ExtractFrom(mesh);
+        };
+
+        VertexData.ExtractFromGeometry = function (geometry) {
+            return VertexData._ExtractFrom(geometry);
+        };
+
+        VertexData._ExtractFrom = function (meshOrGeometry) {
             var result = new BABYLON.VertexData();
 
-            if (mesh.isVerticesDataPresent(BABYLON.VertexBuffer.PositionKind)) {
-                result.positions = mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);
+            if (meshOrGeometry.isVerticesDataPresent(BABYLON.VertexBuffer.PositionKind)) {
+                result.positions = meshOrGeometry.getVerticesData(BABYLON.VertexBuffer.PositionKind);
             }
 
-            if (mesh.isVerticesDataPresent(BABYLON.VertexBuffer.NormalKind)) {
-                result.normals = mesh.getVerticesData(BABYLON.VertexBuffer.NormalKind);
+            if (meshOrGeometry.isVerticesDataPresent(BABYLON.VertexBuffer.NormalKind)) {
+                result.normals = meshOrGeometry.getVerticesData(BABYLON.VertexBuffer.NormalKind);
             }
 
-            if (mesh.isVerticesDataPresent(BABYLON.VertexBuffer.UVKind)) {
-                result.uvs = mesh.getVerticesData(BABYLON.VertexBuffer.UVKind);
+            if (meshOrGeometry.isVerticesDataPresent(BABYLON.VertexBuffer.UVKind)) {
+                result.uvs = meshOrGeometry.getVerticesData(BABYLON.VertexBuffer.UVKind);
             }
 
-            if (mesh.isVerticesDataPresent(BABYLON.VertexBuffer.UV2Kind)) {
-                result.uv2s = mesh.getVerticesData(BABYLON.VertexBuffer.UV2Kind);
+            if (meshOrGeometry.isVerticesDataPresent(BABYLON.VertexBuffer.UV2Kind)) {
+                result.uv2s = meshOrGeometry.getVerticesData(BABYLON.VertexBuffer.UV2Kind);
             }
 
-            if (mesh.isVerticesDataPresent(BABYLON.VertexBuffer.ColorKind)) {
-                result.colors = mesh.getVerticesData(BABYLON.VertexBuffer.ColorKind);
+            if (meshOrGeometry.isVerticesDataPresent(BABYLON.VertexBuffer.ColorKind)) {
+                result.colors = meshOrGeometry.getVerticesData(BABYLON.VertexBuffer.ColorKind);
             }
 
-            if (mesh.isVerticesDataPresent(BABYLON.VertexBuffer.MatricesIndicesKind)) {
-                result.matricesIndices = mesh.getVerticesData(BABYLON.VertexBuffer.MatricesIndicesKind);
+            if (meshOrGeometry.isVerticesDataPresent(BABYLON.VertexBuffer.MatricesIndicesKind)) {
+                result.matricesIndices = meshOrGeometry.getVerticesData(BABYLON.VertexBuffer.MatricesIndicesKind);
             }
 
-            if (mesh.isVerticesDataPresent(BABYLON.VertexBuffer.MatricesWeightsKind)) {
-                result.matricesWeights = mesh.getVerticesData(BABYLON.VertexBuffer.MatricesWeightsKind);
+            if (meshOrGeometry.isVerticesDataPresent(BABYLON.VertexBuffer.MatricesWeightsKind)) {
+                result.matricesWeights = meshOrGeometry.getVerticesData(BABYLON.VertexBuffer.MatricesWeightsKind);
             }
 
-            result.indices = mesh.getIndices();
+            result.indices = meshOrGeometry.getIndices();
 
             return result;
         };

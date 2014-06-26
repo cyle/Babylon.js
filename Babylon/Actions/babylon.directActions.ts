@@ -18,6 +18,19 @@
         }
     }
 
+    export class SetStateAction extends Action {
+        private _target: any;
+
+        constructor(trigger: number, target: any, public value: string, condition?: Condition) {
+            super(trigger, condition);
+            this._target = target;
+        }
+
+        public execute(): void {
+            this._target.state = this.value;
+        }
+    }
+
     export class SetValueAction extends Action {
         private _target: any;
         private _property: string;
@@ -51,7 +64,7 @@
             this._property = this._getProperty(this.propertyPath);
 
             if (typeof this._target[this._property] !== "number") {
-                console.warn("Warning: IncrementValueAction can only be used with number values");
+                Tools.Warn("Warning: IncrementValueAction can only be used with number values");
             }
         }
 
@@ -95,7 +108,7 @@
     }
 
     export class DoNothingAction extends Action {
-        constructor(trigger: number = ActionManager.NoneTrigger, condition?: Condition) {
+        constructor(trigger: number = ActionManager.NothingTrigger, condition?: Condition) {
             super(trigger, condition);
         }
 
@@ -115,20 +128,20 @@
             }
         }
 
-        public execute(): void {
+        public execute(evt: ActionEvent): void {
             for (var index = 0; index < this.children.length; index++) {
-                this.children[index].execute();
+                this.children[index].execute(evt);
             }
         }
     }
 
     export class ExecuteCodeAction extends Action {
-        constructor(trigger: number, public func: () => void, condition?: Condition) {
+        constructor(trigger: number, public func: (evt: ActionEvent) => void, condition?: Condition) {
             super(trigger, condition);
         }
 
-        public execute(): void {
-            this.func();
+        public execute(evt: ActionEvent): void {
+            this.func(evt);
         }
     }
 

@@ -1,21 +1,5 @@
 ﻿var BABYLON;
 (function (BABYLON) {
-    var checkExtends = function (v, min, max) {
-        if (v.x < min.x)
-            min.x = v.x;
-        if (v.y < min.y)
-            min.y = v.y;
-        if (v.z < min.z)
-            min.z = v.z;
-
-        if (v.x > max.x)
-            max.x = v.x;
-        if (v.y > max.y)
-            max.y = v.y;
-        if (v.z > max.z)
-            max.z = v.z;
-    };
-
     var Scene = (function () {
         // Constructor
         function Scene(engine) {
@@ -38,6 +22,8 @@
             this.activeCameras = new Array();
             // Meshes
             this.meshes = new Array();
+            // Geometries
+            this._geometries = new Array();
             this.materials = new Array();
             this.multiMaterials = new Array();
             this.defaultMaterial = new BABYLON.StandardMaterial("default material", this);
@@ -63,6 +49,8 @@
             // Customs render targets
             this.renderTargetsEnabled = true;
             this.customRenderTargets = new Array();
+            // Imported meshes
+            this.importedMeshesFiles = new Array();
             this._totalVertices = 0;
             this._activeVertices = 0;
             this._activeParticles = 0;
@@ -96,11 +84,37 @@
 
             this.postProcessManager = new BABYLON.PostProcessManager(this);
 
+            this.postProcessRenderPipelineManager = new BABYLON.PostProcessRenderPipelineManager();
+
             this._boundingBoxRenderer = new BABYLON.BoundingBoxRenderer(this);
 
             this.attachControl();
         }
-        // Properties
+        Object.defineProperty(Scene.prototype, "meshUnderPointer", {
+            // Properties
+            get: function () {
+                return this._meshUnderPointer;
+            },
+            enumerable: true,
+            configurable: true
+        });
+
+        Object.defineProperty(Scene.prototype, "pointerX", {
+            get: function () {
+                return this._pointerX;
+            },
+            enumerable: true,
+            configurable: true
+        });
+
+        Object.defineProperty(Scene.prototype, "pointerY", {
+            get: function () {
+                return this._pointerY;
+            },
+            enumerable: true,
+            configurable: true
+        });
+
         Scene.prototype.getBoundingBoxRenderer = function () {
             return this._boundingBoxRenderer;
         };
@@ -163,16 +177,22 @@
             var _this = this;
             this._onPointerMove = function (evt) {
                 var canvas = _this._engine.getRenderingCanvas();
-                var pickResult = _this.pick(evt.offsetX || evt.layerX, evt.offsetY || evt.layerY, function (mesh) {
+
+                _this._pointerX = evt.offsetX || evt.layerX;
+                _this._pointerY = evt.offsetY || evt.layerY;
+                var pickResult = _this.pick(_this._pointerX, _this._pointerY, function (mesh) {
                     return mesh.actionManager && mesh.isPickable;
                 });
 
                 if (pickResult.hit) {
                     _this.setPointerOverMesh(pickResult.pickedMesh);
                     canvas.style.cursor = "pointer";
+
+                    _this._meshUnderPointer = pickResult.pickedMesh;
                 } else {
                     _this.setPointerOverMesh(null);
                     canvas.style.cursor = "";
+                    _this._meshUnderPointer = null;
                 }
             };
 
@@ -181,7 +201,18 @@
 
                 if (pickResult.hit) {
                     if (pickResult.pickedMesh.actionManager) {
-                        pickResult.pickedMesh.actionManager.processTrigger(BABYLON.ActionManager.OnPickTrigger);
+                        switch (evt.buttons) {
+                            case 1:
+                                pickResult.pickedMesh.actionManager.processTrigger(BABYLON.ActionManager.OnLeftPickTrigger, BABYLON.ActionEvent.CreateNew(pickResult.pickedMesh));
+                                break;
+                            case 2:
+                                pickResult.pickedMesh.actionManager.processTrigger(BABYLON.ActionManager.OnRightPickTrigger, BABYLON.ActionEvent.CreateNew(pickResult.pickedMesh));
+                                break;
+                            case 3:
+                                pickResult.pickedMesh.actionManager.processTrigger(BABYLON.ActionManager.OnCenterPickTrigger, BABYLON.ActionEvent.CreateNew(pickResult.pickedMesh));
+                                break;
+                        }
+                        pickResult.pickedMesh.actionManager.processTrigger(BABYLON.ActionManager.OnPickTrigger, BABYLON.ActionEvent.CreateNew(pickResult.pickedMesh));
                     }
                 }
 
@@ -207,14 +238,22 @@
                 return false;
             }
 
-            for (var index = 0; index < this.meshes.length; index++) {
-                var mesh = this.meshes[index];
-                var mat = mesh.material;
+            for (var index = 0; index < this._geometries.length; index++) {
+                var geometry = this._geometries[index];
 
-                if (mesh.delayLoadState === BABYLON.Engine.DELAYLOADSTATE_LOADING) {
+                if (geometry.delayLoadState === BABYLON.Engine.DELAYLOADSTATE_LOADING) {
+                    return false;
+                }
+            }
+
+            for (index = 0; index < this.meshes.length; index++) {
+                var mesh = this.meshes[index];
+
+                if (!mesh.isReady()) {
                     return false;
                 }
 
+                var mat = mesh.material;
                 if (mat) {
                     if (!mat.isReady(mesh)) {
                         return false;
@@ -284,27 +323,31 @@
         };
 
         // Animations
-        Scene.prototype.beginAnimation = function (target, from, to, loop, speedRatio, onAnimationEnd) {
+        Scene.prototype.beginAnimation = function (target, from, to, loop, speedRatio, onAnimationEnd, animatable) {
             if (speedRatio === undefined) {
                 speedRatio = 1.0;
             }
 
+            this.stopAnimation(target);
+
+            if (!animatable) {
+                animatable = new BABYLON.Animatable(this, target, from, to, loop, speedRatio, onAnimationEnd);
+            }
+
             // Local animations
             if (target.animations) {
-                this.stopAnimation(target);
-
-                var animatable = new BABYLON.Internals.Animatable(target, from, to, loop, speedRatio, onAnimationEnd);
-
-                this._activeAnimatables.push(animatable);
+                animatable.appendAnimations(target, target.animations);
             }
 
             // Children animations
             if (target.getAnimatables) {
                 var animatables = target.getAnimatables();
                 for (var index = 0; index < animatables.length; index++) {
-                    this.beginAnimation(animatables[index], from, to, loop, speedRatio, onAnimationEnd);
+                    this.beginAnimation(animatables[index], from, to, loop, speedRatio, onAnimationEnd, animatable);
                 }
             }
+
+            return animatable;
         };
 
         Scene.prototype.beginDirectAnimation = function (target, animations, from, to, loop, speedRatio, onAnimationEnd) {
@@ -312,28 +355,26 @@
                 speedRatio = 1.0;
             }
 
-            var animatable = new BABYLON.Internals.Animatable(target, from, to, loop, speedRatio, onAnimationEnd, animations);
+            var animatable = new BABYLON.Animatable(this, target, from, to, loop, speedRatio, onAnimationEnd, animations);
 
-            this._activeAnimatables.push(animatable);
+            return animatable;
         };
 
-        Scene.prototype.stopAnimation = function (target) {
-            // Local animations
-            if (target.animations) {
-                for (var index = 0; index < this._activeAnimatables.length; index++) {
-                    if (this._activeAnimatables[index].target === target) {
-                        this._activeAnimatables.splice(index, 1);
-                        return;
-                    }
+        Scene.prototype.getAnimatableByTarget = function (target) {
+            for (var index = 0; index < this._activeAnimatables.length; index++) {
+                if (this._activeAnimatables[index].target === target) {
+                    return this._activeAnimatables[index];
                 }
             }
 
-            // Children animations
-            if (target.getAnimatables) {
-                var animatables = target.getAnimatables();
-                for (index = 0; index < animatables.length; index++) {
-                    this.stopAnimation(animatables[index]);
-                }
+            return null;
+        };
+
+        Scene.prototype.stopAnimation = function (target) {
+            var animatable = this.getAnimatableByTarget(target);
+
+            if (animatable) {
+                animatable.stop();
             }
         };
 
@@ -457,6 +498,30 @@
             return null;
         };
 
+        Scene.prototype.getGeometryByID = function (id) {
+            for (var index = 0; index < this._geometries.length; index++) {
+                if (this._geometries[index].id === id) {
+                    return this._geometries[index];
+                }
+            }
+
+            return null;
+        };
+
+        Scene.prototype.pushGeometry = function (geometry, force) {
+            if (!force && this.getGeometryByID(geometry.id)) {
+                return false;
+            }
+
+            this._geometries.push(geometry);
+
+            return true;
+        };
+
+        Scene.prototype.getGeometries = function () {
+            return this._geometries;
+        };
+
         Scene.prototype.getMeshByID = function (id) {
             for (var index = 0; index < this.meshes.length; index++) {
                 if (this.meshes[index].id === id) {
@@ -547,6 +612,10 @@
             if (mesh.subMeshes.length == 1 || subMesh.isInFrustum(this._frustumPlanes)) {
                 var material = subMesh.getMaterial();
 
+                if (mesh.showSubMeshesBoundingBox) {
+                    this._boundingBoxRenderer.renderList.push(subMesh.getBoundingInfo().boundingBox);
+                }
+
                 if (material) {
                     // Render targets
                     if (material.getRenderTargetTextures) {
@@ -579,87 +648,35 @@
             }
 
             // Meshes
+            var meshes;
+            var len;
+
             if (this._selectionOctree) {
                 var selection = this._selectionOctree.select(this._frustumPlanes);
-
-                for (var blockIndex = 0; blockIndex < selection.length; blockIndex++) {
-                    var block = selection.data[blockIndex];
-
-                    for (var meshIndex = 0; meshIndex < block.meshes.length; meshIndex++) {
-                        var mesh = block.meshes[meshIndex];
-
-                        if (Math.abs(mesh._renderId) !== this._renderId) {
-                            this._totalVertices += mesh.getTotalVertices();
-
-                            if (!mesh.isReady()) {
-                                continue;
-                            }
-
-                            mesh.computeWorldMatrix();
-                            mesh._renderId = 0;
-                        }
-
-                        if (mesh._renderId === this._renderId || (mesh._renderId === 0 && mesh.isEnabled() && mesh.isVisible && mesh.visibility > 0 && mesh.isInFrustum(this._frustumPlanes))) {
-                            if (mesh._renderId === 0) {
-                                this._activeMeshes.push(mesh);
-                            }
-                            mesh._renderId = this._renderId;
-
-                            if (mesh.showBoundingBox) {
-                                this._boundingBoxRenderer.renderList.push(mesh);
-                            }
-
-                            if (mesh.skeleton) {
-                                this._activeSkeletons.pushNoDuplicate(mesh.skeleton);
-                            }
-
-                            var subMeshes = block.subMeshes[meshIndex];
-                            for (subIndex = 0; subIndex < subMeshes.length; subIndex++) {
-                                subMesh = subMeshes[subIndex];
-
-                                if (subMesh._renderId === this._renderId) {
-                                    continue;
-                                }
-                                subMesh._renderId = this._renderId;
-
-                                this._evaluateSubMesh(subMesh, mesh);
-                            }
-                        } else {
-                            mesh._renderId = -this._renderId;
-                        }
-                    }
-                }
+                meshes = selection.data;
+                len = selection.length;
             } else {
-                for (meshIndex = 0; meshIndex < this.meshes.length; meshIndex++) {
-                    mesh = this.meshes[meshIndex];
+                len = this.meshes.length;
+                meshes = this.meshes;
+            }
 
-                    this._totalVertices += mesh.getTotalVertices();
+            for (var meshIndex = 0; meshIndex < len; meshIndex++) {
+                var mesh = meshes[meshIndex];
 
-                    if (!mesh.isReady()) {
-                        continue;
-                    }
+                this._totalVertices += mesh.getTotalVertices();
 
-                    mesh.computeWorldMatrix();
+                if (!mesh.isReady()) {
+                    continue;
+                }
 
-                    if (mesh.isEnabled() && mesh.isVisible && mesh.visibility > 0 && mesh.isInFrustum(this._frustumPlanes)) {
-                        this._activeMeshes.push(mesh);
+                mesh.computeWorldMatrix();
+                mesh._preActivate();
 
-                        if (mesh.skeleton) {
-                            this._activeSkeletons.pushNoDuplicate(mesh.skeleton);
-                        }
+                if (mesh.isEnabled() && mesh.isVisible && mesh.visibility > 0 && ((mesh.layerMask & this.activeCamera.layerMask) != 0) && mesh.isInFrustum(this._frustumPlanes)) {
+                    this._activeMeshes.push(mesh);
+                    mesh._activate(this._renderId);
 
-                        if (mesh.showBoundingBox) {
-                            this._boundingBoxRenderer.renderList.push(mesh);
-                        }
-
-                        if (mesh.subMeshes) {
-                            for (var subIndex = 0; subIndex < mesh.subMeshes.length; subIndex++) {
-                                var subMesh = mesh.subMeshes[subIndex];
-
-                                this._evaluateSubMesh(subMesh, mesh);
-                            }
-                        }
-                    }
+                    this._activeMesh(mesh);
                 }
             }
 
@@ -669,6 +686,10 @@
                 for (var particleIndex = 0; particleIndex < this.particleSystems.length; particleIndex++) {
                     var particleSystem = this.particleSystems[particleIndex];
 
+                    if (!particleSystem.isStarted()) {
+                        continue;
+                    }
+
                     if (!particleSystem.emitter.position || (particleSystem.emitter && particleSystem.emitter.isEnabled())) {
                         this._activeParticleSystems.push(particleSystem);
                         particleSystem.animate();
@@ -676,6 +697,38 @@
                 }
             }
             this._particlesDuration += new Date().getTime() - beforeParticlesDate;
+        };
+
+        Scene.prototype._activeMesh = function (mesh) {
+            if (mesh.skeleton) {
+                this._activeSkeletons.pushNoDuplicate(mesh.skeleton);
+            }
+
+            if (mesh.showBoundingBox) {
+                this._boundingBoxRenderer.renderList.push(mesh.getBoundingInfo().boundingBox);
+            }
+
+            if (mesh.subMeshes) {
+                // Submeshes Octrees
+                var len;
+                var subMeshes;
+
+                if (mesh._submeshesOctree && mesh.useOctreeForRenderingSelection) {
+                    var intersections = mesh._submeshesOctree.select(this._frustumPlanes);
+
+                    len = intersections.length;
+                    subMeshes = intersections.data;
+                } else {
+                    subMeshes = mesh.subMeshes;
+                    len = subMeshes.length;
+                }
+
+                for (var subIndex = 0; subIndex < len; subIndex++) {
+                    var subMesh = subMeshes[subIndex];
+
+                    this._evaluateSubMesh(subMesh, mesh);
+                }
+            }
         };
 
         Scene.prototype.updateTransformMatrix = function (force) {
@@ -697,6 +750,10 @@
             this._renderId++;
             this.updateTransformMatrix();
 
+            if (this.beforeCameraRender) {
+                this.beforeCameraRender(this.activeCamera);
+            }
+
             // Meshes
             var beforeEvaluateActiveMeshesDate = new Date().getTime();
             this._evaluateActiveMeshes();
@@ -709,17 +766,21 @@
             }
 
             for (var customIndex = 0; customIndex < this.customRenderTargets.length; customIndex++) {
-                this._renderTargets.push(this.customRenderTargets[customIndex]);
+                var renderTarget = this.customRenderTargets[customIndex];
+                this._renderTargets.push(renderTarget);
             }
 
             // Render targets
             var beforeRenderTargetDate = new Date().getTime();
             if (this.renderTargetsEnabled) {
                 for (var renderIndex = 0; renderIndex < this._renderTargets.length; renderIndex++) {
-                    var renderTarget = this._renderTargets.data[renderIndex];
-                    this._renderId++;
-                    renderTarget.render();
+                    renderTarget = this._renderTargets.data[renderIndex];
+                    if (renderTarget._shouldRender()) {
+                        this._renderId++;
+                        renderTarget.render();
+                    }
                 }
+                this._renderId++;
             }
 
             if (this._renderTargets.length > 0) {
@@ -778,6 +839,10 @@
 
             // Reset some special arrays
             this._renderTargets.reset();
+
+            if (this.afterCameraRender) {
+                this.afterCameraRender(this.activeCamera);
+            }
         };
 
         Scene.prototype._processSubCameras = function (camera) {
@@ -809,7 +874,7 @@
 
             // Actions
             if (this.actionManager) {
-                this.actionManager.processTrigger(BABYLON.ActionManager.OnEveryFrameTrigger);
+                this.actionManager.processTrigger(BABYLON.ActionManager.OnEveryFrameTrigger, null);
             }
 
             // Before render
@@ -842,6 +907,9 @@
                     this._renderTargets.push(shadowGenerator.getShadowMap());
                 }
             }
+
+            // RenderPipeline
+            this.postProcessRenderPipelineManager.update();
 
             // Multi-cameras?
             if (this.activeCameras.length > 0) {
@@ -983,9 +1051,11 @@
         };
 
         // Octrees
-        Scene.prototype.createOrUpdateSelectionOctree = function () {
+        Scene.prototype.createOrUpdateSelectionOctree = function (maxCapacity, maxDepth) {
+            if (typeof maxCapacity === "undefined") { maxCapacity = 64; }
+            if (typeof maxDepth === "undefined") { maxDepth = 2; }
             if (!this._selectionOctree) {
-                this._selectionOctree = new BABYLON.Octree();
+                this._selectionOctree = new BABYLON.Octree(BABYLON.Octree.CreationFuncForMeshes, maxCapacity, maxDepth);
             }
 
             var min = new BABYLON.Vector3(Number.MAX_VALUE, Number.MAX_VALUE, Number.MAX_VALUE);
@@ -997,12 +1067,14 @@
                 var minBox = mesh.getBoundingInfo().boundingBox.minimumWorld;
                 var maxBox = mesh.getBoundingInfo().boundingBox.maximumWorld;
 
-                checkExtends(minBox, min, max);
-                checkExtends(maxBox, min, max);
+                BABYLON.Tools.CheckExtends(minBox, min, max);
+                BABYLON.Tools.CheckExtends(maxBox, min, max);
             }
 
             // Update octree
             this._selectionOctree.update(min, max, this.meshes);
+
+            return this._selectionOctree;
         };
 
         // Picking
@@ -1020,10 +1092,10 @@
             var viewport = cameraViewport.toGlobal(engine);
 
             // Moving coordinates to local viewport world
-            x = x - viewport.x;
-            y = y - (this._engine.getRenderHeight() - viewport.y - viewport.height);
+            x = x / this._engine.getHardwareScalingLevel() - viewport.x;
+            y = y / this._engine.getHardwareScalingLevel() - (this._engine.getRenderHeight() - viewport.y - viewport.height);
 
-            return BABYLON.Ray.CreateNew(x * this._engine.getHardwareScalingLevel(), y * this._engine.getHardwareScalingLevel(), viewport.width, viewport.height, world ? world : BABYLON.Matrix.Identity(), camera.getViewMatrix(), camera.getProjectionMatrix());
+            return BABYLON.Ray.CreateNew(x, y, viewport.width, viewport.height, world ? world : BABYLON.Matrix.Identity(), camera.getViewMatrix(), camera.getProjectionMatrix());
         };
 
         Scene.prototype._internalPick = function (rayFunction, predicate, fastCheck) {
@@ -1044,7 +1116,7 @@
                 var ray = rayFunction(world);
 
                 var result = mesh.intersects(ray, fastCheck);
-                if (!result.hit)
+                if (!result || !result.hit)
                     continue;
 
                 if (!fastCheck && pickingInfo != null && result.distance >= pickingInfo.distance)
@@ -1090,12 +1162,12 @@
             }
 
             if (this._pointerOverMesh && this._pointerOverMesh.actionManager) {
-                this._pointerOverMesh.actionManager.processTrigger(BABYLON.ActionManager.OnPointerOutTrigger);
+                this._pointerOverMesh.actionManager.processTrigger(BABYLON.ActionManager.OnPointerOutTrigger, BABYLON.ActionEvent.CreateNew(this._pointerOverMesh));
             }
 
             this._pointerOverMesh = mesh;
             if (this._pointerOverMesh && this._pointerOverMesh.actionManager) {
-                this._pointerOverMesh.actionManager.processTrigger(BABYLON.ActionManager.OnPointerOverTrigger);
+                this._pointerOverMesh.actionManager.processTrigger(BABYLON.ActionManager.OnPointerOverTrigger, BABYLON.ActionEvent.CreateNew(this._pointerOverMesh));
             }
         };
 

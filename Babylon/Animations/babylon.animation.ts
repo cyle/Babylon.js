@@ -3,6 +3,8 @@
         private _keys: Array<any>;
         private _offsetsCache = {};
         private _highLimitsCache = {};
+        private _stopped = false;
+        public _target;
 
         public targetPropertyPath: string[];
         public currentFrame: number;
@@ -14,6 +16,10 @@
         }
 
         // Methods   
+        public isStopped(): boolean {
+            return this._stopped;
+        }
+
         public getKeys(): any[] {
             return this._keys;
         }
@@ -121,8 +127,9 @@
             return this._keys[this._keys.length - 1].value;
         }
 
-        public animate(target, delay: number, from: number, to: number, loop: boolean, speedRatio: number): boolean {
+        public animate(delay: number, from: number, to: number, loop: boolean, speedRatio: number): boolean {
             if (!this.targetPropertyPath || this.targetPropertyPath.length < 1) {
+                this._stopped = true;
                 return false;
             }
 
@@ -196,7 +203,7 @@
 
             // Set value
             if (this.targetPropertyPath.length > 1) {
-                var property = target[this.targetPropertyPath[0]];
+                var property = this._target[this.targetPropertyPath[0]];
 
                 for (var index = 1; index < this.targetPropertyPath.length - 1; index++) {
                     property = property[this.targetPropertyPath[index]];
@@ -204,25 +211,60 @@
 
                 property[this.targetPropertyPath[this.targetPropertyPath.length - 1]] = currentValue;
             } else {
-                target[this.targetPropertyPath[0]] = currentValue;
+                this._target[this.targetPropertyPath[0]] = currentValue;
             }
 
-            if (target.markAsDirty) {
-                target.markAsDirty(this.targetProperty);
+            if (this._target.markAsDirty) {
+                this._target.markAsDirty(this.targetProperty);
+            }
+
+            if (!returnValue) {
+                this._stopped = true;
             }
 
             return returnValue;
         }
 
         // Statics
-        public static ANIMATIONTYPE_FLOAT = 0;
-        public static ANIMATIONTYPE_VECTOR3 = 1;
-        public static ANIMATIONTYPE_QUATERNION = 2;
-        public static ANIMATIONTYPE_MATRIX = 3;
-        public static ANIMATIONTYPE_COLOR3 = 4;
+        private static _ANIMATIONTYPE_FLOAT = 0;
+        private static _ANIMATIONTYPE_VECTOR3 = 1;
+        private static _ANIMATIONTYPE_QUATERNION = 2;
+        private static _ANIMATIONTYPE_MATRIX = 3;
+        private static _ANIMATIONTYPE_COLOR3 = 4;
+        private static _ANIMATIONLOOPMODE_RELATIVE = 0;
+        private static _ANIMATIONLOOPMODE_CYCLE = 1;
+        private static _ANIMATIONLOOPMODE_CONSTANT = 2;
 
-        public static ANIMATIONLOOPMODE_RELATIVE = 0;
-        public static ANIMATIONLOOPMODE_CYCLE = 1;
-        public static ANIMATIONLOOPMODE_CONSTANT = 2;
+        public static get ANIMATIONTYPE_FLOAT(): number {
+            return Animation._ANIMATIONTYPE_FLOAT;
+        }
+
+        public static get ANIMATIONTYPE_VECTOR3(): number {
+            return Animation._ANIMATIONTYPE_VECTOR3;
+        }
+
+        public static get ANIMATIONTYPE_QUATERNION(): number {
+            return Animation._ANIMATIONTYPE_QUATERNION;
+        }
+
+        public static get ANIMATIONTYPE_MATRIX(): number {
+            return Animation._ANIMATIONTYPE_MATRIX;
+        }
+
+        public static get ANIMATIONTYPE_COLOR3(): number {
+            return Animation._ANIMATIONTYPE_COLOR3;
+        }
+
+        public static get ANIMATIONLOOPMODE_RELATIVE(): number {
+            return Animation._ANIMATIONLOOPMODE_RELATIVE;
+        }
+
+        public static get ANIMATIONLOOPMODE_CYCLE(): number {
+            return Animation._ANIMATIONLOOPMODE_CYCLE;
+        }
+
+        public static get ANIMATIONLOOPMODE_CONSTANT(): number {
+            return Animation._ANIMATIONLOOPMODE_CONSTANT;
+        }
     }
 } 

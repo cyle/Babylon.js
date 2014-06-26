@@ -13,6 +13,7 @@
         private _effect: Effect;
         private _positionX: number;
         private _positionY: number;
+        private _isEnabled = true;
 
         constructor(public name: string, emitter: any, scene: Scene) {
 
@@ -20,7 +21,7 @@
             this._emitter = emitter;
             scene.lensFlareSystems.push(this);
 
-            this.meshesSelectionPredicate = m => m.material && m.isVisible && m.isEnabled() && m.checkCollisions;
+            this.meshesSelectionPredicate = m => m.material && m.isVisible && m.isEnabled() && m.checkCollisions && ((m.layerMask & scene.activeCamera.layerMask) != 0);
 
             // VBO
             var vertices = [];
@@ -48,6 +49,14 @@
                 ["position"],
                 ["color", "viewportMatrix"],
                 ["textureSampler"], "");
+        }
+
+        public get isEnabled(): boolean {
+            return this._isEnabled;
+        }
+
+        public set isEnabled(value: boolean) {
+            this._isEnabled = value;
         }
 
         public getScene(): Scene {
@@ -83,6 +92,10 @@
         }
 
         public _isVisible(): boolean {
+            if (!this._isEnabled) {
+                return false;
+            }
+
             var emitterPosition = this.getEmitterPosition();
             var direction = emitterPosition.subtract(this._scene.activeCamera.position);
             var distance = direction.length();
