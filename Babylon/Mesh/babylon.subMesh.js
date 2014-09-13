@@ -13,6 +13,8 @@
             this._renderingMesh = renderingMesh || mesh;
             mesh.subMeshes.push(this);
 
+            this._id = mesh.subMeshes.length - 1;
+
             if (createBoundingBox) {
                 this.refreshBoundingInfo();
             }
@@ -160,7 +162,7 @@
 
                 if (vertexIndex < minVertexIndex)
                     minVertexIndex = vertexIndex;
-                else if (vertexIndex > maxVertexIndex)
+                if (vertexIndex > maxVertexIndex)
                     maxVertexIndex = vertexIndex;
             }
 

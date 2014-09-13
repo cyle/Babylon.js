@@ -348,6 +348,7 @@
         serializationObject.lightId = light.id;
         serializationObject.mapSize = shadowGenerator.getShadowMap().getRenderSize();
         serializationObject.useVarianceShadowMap = shadowGenerator.useVarianceShadowMap;
+        serializationObject.usePoissonSampling = shadowGenerator.usePoissonSampling;
 
         serializationObject.renderList = [];
         for (var meshIndex = 0; meshIndex < shadowGenerator.getShadowMap().renderList.length; meshIndex++) {
@@ -611,6 +612,23 @@
                 serializationObject.physicsImpostor = 2;
                 break;
             }
+        }
+
+        // Instances
+        serializationObject.instances = [];
+        for (var index = 0; index < mesh.instances.length; index++) {
+            var instance = mesh.instances[index];
+            var serializationInstance = {
+                name: instance.name,
+                position: instance.position,
+                rotation: instance.rotation,
+                rotationQuaternion: instance.rotationQuaternion,
+                scaling: instance.scaling
+            };
+            serializationObject.instances.push(serializationInstance);
+
+            // Animations
+            appendAnimations(instance, serializationInstance);
         }
 
         // Animations

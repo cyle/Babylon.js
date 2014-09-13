@@ -23,6 +23,7 @@ namespace Max2Babylon
 
         readonly List<string> alreadyExportedTextures = new List<string>();
 
+        public bool AutoSave3dsMaxFile { get; set; }
         public bool ExportHiddenObjects { get; set; }
         public bool IsCancelled { get; set; }
 
@@ -76,7 +77,7 @@ namespace Max2Babylon
             }
         }
 
-        public async Task ExportAsync(string outputFile, bool generateManifest, Form callerForm)
+        public async Task ExportAsync(string outputFile, bool generateManifest, bool onlySelected, Form callerForm)
         {
             IsCancelled = false;
             RaiseMessage("Exportation started", Color.Blue);
@@ -97,11 +98,15 @@ namespace Max2Babylon
 
             // Save scene
             RaiseMessage("Saving 3ds max file");
-            var forceSave = Loader.Core.FileSave;
 
-            if (callerForm != null)
+            if (AutoSave3dsMaxFile)
             {
-                callerForm.BringToFront();
+                var forceSave = Loader.Core.FileSave;
+
+                if (callerForm != null)
+                {
+                    callerForm.BringToFront();
+                }
             }
 
             // Global
@@ -118,6 +123,10 @@ namespace Max2Babylon
             RaiseMessage("Exporting cameras");
             foreach (var cameraNode in maxScene.NodesListBySuperClass(SClass_ID.Camera))
             {
+                if (onlySelected && !cameraNode.Selected)
+                {
+                    continue;
+                }
                 ExportCamera(cameraNode, babylonScene);
 
                 if (mainCamera == null && babylonScene.CamerasList.Count > 0)
@@ -171,6 +180,11 @@ namespace Max2Babylon
             var progression = 10.0f;
             foreach (var meshNode in meshes)
             {
+                if (onlySelected && !meshNode.Selected)
+                {
+                    continue;
+                }
+
                 Tools.PreparePipeline(meshNode, true);
                 ExportMesh(meshNode, babylonScene);
                 Tools.PreparePipeline(meshNode, false);
@@ -196,6 +210,10 @@ namespace Max2Babylon
             RaiseMessage("Exporting lights");
             foreach (var lightNode in maxScene.NodesListBySuperClass(SClass_ID.Light))
             {
+                if (onlySelected && !lightNode.Selected)
+                {
+                    continue;
+                }
                 ExportLight(lightNode, babylonScene);
                 CheckCancelled();
             }
@@ -203,6 +221,8 @@ namespace Max2Babylon
             if (babylonScene.LightsList.Count == 0)
             {
                 RaiseWarning("No light defined", 1);
+                RaiseWarning("A default hemispheric light was added for your convenience", 1);
+                ExportDefaultLight(babylonScene);
             }
             else
             {
@@ -223,7 +243,7 @@ namespace Max2Babylon
             // Output
             RaiseMessage("Saving to output file");
             babylonScene.Prepare(false);
-            var jsonSerializer = JsonSerializer.Create();
+            var jsonSerializer = JsonSerializer.Create(new JsonSerializerSettings());
             var sb = new StringBuilder();
             var sw = new StringWriter(sb, CultureInfo.InvariantCulture);
 

@@ -9,7 +9,8 @@ var BABYLON;
     var _InstancesBatch = (function () {
         function _InstancesBatch() {
             this.mustReturn = false;
-            this.renderSelf = true;
+            this.visibleInstances = new Array();
+            this.renderSelf = new Array();
         }
         return _InstancesBatch;
     })();
@@ -22,9 +23,10 @@ var BABYLON;
             // Members
             this.delayLoadState = BABYLON.Engine.DELAYLOADSTATE_NONE;
             this.instances = new Array();
-            this._onBeforeRenderCallbacks = [];
+            this._onBeforeRenderCallbacks = new Array();
+            this._onAfterRenderCallbacks = new Array();
             this._visibleInstances = {};
-            this._renderIdForInstances = -1;
+            this._renderIdForInstances = new Array();
             this._batchCache = new _InstancesBatch();
             this._instancesBufferSize = 32 * 16 * 4;
         }
@@ -100,6 +102,12 @@ var BABYLON;
 
         // Methods
         Mesh.prototype._preActivate = function () {
+            var sceneRenderId = this.getScene().getRenderId();
+            if (this._preActivateId == sceneRenderId) {
+                return;
+            }
+
+            this._preActivateId = sceneRenderId;
             this._visibleInstances = null;
         };
 
@@ -250,6 +258,17 @@ var BABYLON;
             engine.draw(useTriangles, useTriangles ? subMesh.indexStart : 0, useTriangles ? subMesh.indexCount : subMesh.linesIndexCount, instancesCount);
         };
 
+        Mesh.prototype._fullDraw = function (subMesh, useTriangles, instancesCount) {
+            if (!this._geometry || !this._geometry.getVertexBuffers() || !this._geometry.getIndexBuffer()) {
+                return;
+            }
+
+            var engine = this.getScene().getEngine();
+
+            // Draw order
+            engine.draw(useTriangles, useTriangles ? subMesh.indexStart : 0, useTriangles ? subMesh.indexCount : subMesh.linesIndexCount, instancesCount);
+        };
+
         Mesh.prototype.registerBeforeRender = function (func) {
             this._onBeforeRenderCallbacks.push(func);
         };
@@ -262,34 +281,46 @@ var BABYLON;
             }
         };
 
-        Mesh.prototype._getInstancesRenderList = function () {
+        Mesh.prototype.registerAfterRender = function (func) {
+            this._onAfterRenderCallbacks.push(func);
+        };
+
+        Mesh.prototype.unregisterAfterRender = function (func) {
+            var index = this._onAfterRenderCallbacks.indexOf(func);
+
+            if (index > -1) {
+                this._onAfterRenderCallbacks.splice(index, 1);
+            }
+        };
+
+        Mesh.prototype._getInstancesRenderList = function (subMeshId) {
             var scene = this.getScene();
             this._batchCache.mustReturn = false;
-            this._batchCache.renderSelf = true;
-            this._batchCache.visibleInstances = null;
+            this._batchCache.renderSelf[subMeshId] = this.isEnabled() && this.isVisible;
+            this._batchCache.visibleInstances[subMeshId] = null;
 
             if (this._visibleInstances) {
                 var currentRenderId = scene.getRenderId();
-                this._batchCache.visibleInstances = this._visibleInstances[currentRenderId];
+                this._batchCache.visibleInstances[subMeshId] = this._visibleInstances[currentRenderId];
                 var selfRenderId = this._renderId;
 
-                if (!this._batchCache.visibleInstances && this._visibleInstances.defaultRenderId) {
-                    this._batchCache.visibleInstances = this._visibleInstances[this._visibleInstances.defaultRenderId];
+                if (!this._batchCache.visibleInstances[subMeshId] && this._visibleInstances.defaultRenderId) {
+                    this._batchCache.visibleInstances[subMeshId] = this._visibleInstances[this._visibleInstances.defaultRenderId];
                     currentRenderId = this._visibleInstances.defaultRenderId;
                     selfRenderId = this._visibleInstances.selfDefaultRenderId;
                 }
 
-                if (this._batchCache.visibleInstances && this._batchCache.visibleInstances.length) {
-                    if (this._renderIdForInstances === currentRenderId) {
+                if (this._batchCache.visibleInstances[subMeshId] && this._batchCache.visibleInstances[subMeshId].length) {
+                    if (this._renderIdForInstances[subMeshId] === currentRenderId) {
                         this._batchCache.mustReturn = true;
                         return this._batchCache;
                     }
 
                     if (currentRenderId !== selfRenderId) {
-                        this._batchCache.renderSelf = false;
+                        this._batchCache.renderSelf[subMeshId] = false;
                     }
                 }
-                this._renderIdForInstances = currentRenderId;
+                this._renderIdForInstances[subMeshId] = currentRenderId;
             }
 
             return this._batchCache;
@@ -316,17 +347,21 @@ var BABYLON;
             var instancesCount = 0;
 
             var world = this.getWorldMatrix();
-            if (batch.renderSelf) {
+            if (batch.renderSelf[subMesh._id]) {
                 world.copyToArray(this._worldMatricesInstancesArray, offset);
                 offset += 16;
                 instancesCount++;
             }
 
-            for (var instanceIndex = 0; instanceIndex < batch.visibleInstances.length; instanceIndex++) {
-                var instance = batch.visibleInstances[instanceIndex];
-                instance.getWorldMatrix().copyToArray(this._worldMatricesInstancesArray, offset);
-                offset += 16;
-                instancesCount++;
+            var visibleInstances = batch.visibleInstances[subMesh._id];
+
+            if (visibleInstances) {
+                for (var instanceIndex = 0; instanceIndex < visibleInstances.length; instanceIndex++) {
+                    var instance = visibleInstances[instanceIndex];
+                    instance.getWorldMatrix().copyToArray(this._worldMatricesInstancesArray, offset);
+                    offset += 16;
+                    instancesCount++;
+                }
             }
 
             var offsetLocation0 = effect.getAttributeLocationByName("world0");
@@ -347,7 +382,7 @@ var BABYLON;
             var scene = this.getScene();
 
             // Managing instances
-            var batch = this._getInstancesRenderList();
+            var batch = this._getInstancesRenderList(subMesh._id);
 
             if (batch.mustReturn) {
                 return;
@@ -363,13 +398,20 @@ var BABYLON;
             }
 
             var engine = scene.getEngine();
-            var hardwareInstancedRendering = (engine.getCaps().instancedArrays !== null) && (batch.visibleInstances !== null);
+            var hardwareInstancedRendering = (engine.getCaps().instancedArrays !== null) && (batch.visibleInstances[subMesh._id] !== null);
 
             // Material
             var effectiveMaterial = subMesh.getMaterial();
 
             if (!effectiveMaterial || !effectiveMaterial.isReady(this, hardwareInstancedRendering)) {
                 return;
+            }
+
+            // Outline - step 1
+            var savedDepthWrite = engine.getDepthWrite();
+            if (this.renderOutline) {
+                engine.setDepthWrite(false);
+                scene.getOutlineRenderer().render(subMesh, batch);
             }
 
             effectiveMaterial._preBind();
@@ -386,14 +428,14 @@ var BABYLON;
             if (hardwareInstancedRendering) {
                 this._renderWithInstances(subMesh, wireFrame, batch, effect, engine);
             } else {
-                if (batch.renderSelf) {
+                if (batch.renderSelf[subMesh._id]) {
                     // Draw
                     this._draw(subMesh, !wireFrame);
                 }
 
-                if (batch.visibleInstances) {
-                    for (var instanceIndex = 0; instanceIndex < batch.visibleInstances.length; instanceIndex++) {
-                        var instance = batch.visibleInstances[instanceIndex];
+                if (batch.visibleInstances[subMesh._id]) {
+                    for (var instanceIndex = 0; instanceIndex < batch.visibleInstances[subMesh._id].length; instanceIndex++) {
+                        var instance = batch.visibleInstances[subMesh._id][instanceIndex];
 
                         // World
                         world = instance.getWorldMatrix();
@@ -407,6 +449,18 @@ var BABYLON;
 
             // Unbind
             effectiveMaterial.unbind();
+
+            // Outline - step 2
+            if (this.renderOutline && savedDepthWrite) {
+                engine.setDepthWrite(true);
+                engine.setColorWrite(false);
+                scene.getOutlineRenderer().render(subMesh, batch);
+                engine.setColorWrite(true);
+            }
+
+            for (callbackIndex = 0; callbackIndex < this._onAfterRenderCallbacks.length; callbackIndex++) {
+                this._onAfterRenderCallbacks[callbackIndex]();
+            }
         };
 
         Mesh.prototype.getEmittedParticleSystems = function () {
@@ -627,6 +681,73 @@ var BABYLON;
         };
 
         // Geometric tools
+        Mesh.prototype.applyDisplacementMap = function (url, minHeight, maxHeight) {
+            var _this = this;
+            var scene = this.getScene();
+
+            var onload = function (img) {
+                // Getting height map data
+                var canvas = document.createElement("canvas");
+                var context = canvas.getContext("2d");
+                var heightMapWidth = img.width;
+                var heightMapHeight = img.height;
+                canvas.width = heightMapWidth;
+                canvas.height = heightMapHeight;
+
+                context.drawImage(img, 0, 0);
+
+                // Create VertexData from map data
+                var buffer = context.getImageData(0, 0, heightMapWidth, heightMapHeight).data;
+
+                _this.applyDisplacementMapFromBuffer(buffer, heightMapWidth, heightMapHeight, minHeight, maxHeight);
+            };
+
+            BABYLON.Tools.LoadImage(url, onload, function () {
+            }, scene.database);
+        };
+
+        Mesh.prototype.applyDisplacementMapFromBuffer = function (buffer, heightMapWidth, heightMapHeight, minHeight, maxHeight) {
+            if (!this.isVerticesDataPresent(BABYLON.VertexBuffer.PositionKind) || !this.isVerticesDataPresent(BABYLON.VertexBuffer.NormalKind) || !this.isVerticesDataPresent(BABYLON.VertexBuffer.UVKind)) {
+                BABYLON.Tools.Warn("Cannot call applyDisplacementMap: Given mesh is not complete. Position, Normal or UV are missing");
+                return;
+            }
+
+            var positions = this.getVerticesData(BABYLON.VertexBuffer.PositionKind);
+            var normals = this.getVerticesData(BABYLON.VertexBuffer.NormalKind);
+            var uvs = this.getVerticesData(BABYLON.VertexBuffer.UVKind);
+            var position = BABYLON.Vector3.Zero();
+            var normal = BABYLON.Vector3.Zero();
+            var uv = BABYLON.Vector2.Zero();
+
+            for (var index = 0; index < positions.length; index += 3) {
+                BABYLON.Vector3.FromArrayToRef(positions, index, position);
+                BABYLON.Vector3.FromArrayToRef(normals, index, normal);
+                BABYLON.Vector2.FromArrayToRef(uvs, (index / 3) * 2, uv);
+
+                // Compute height
+                var u = ((Math.abs(uv.x) * heightMapWidth) % heightMapWidth) | 0;
+                var v = ((Math.abs(uv.y) * heightMapHeight) % heightMapHeight) | 0;
+
+                var pos = (u + v * heightMapWidth) * 4;
+                var r = buffer[pos] / 255.0;
+                var g = buffer[pos + 1] / 255.0;
+                var b = buffer[pos + 2] / 255.0;
+
+                var gradient = r * 0.3 + g * 0.59 + b * 0.11;
+
+                normal.normalize();
+                normal.scaleInPlace(minHeight + (maxHeight - minHeight) * gradient);
+                position = position.add(normal);
+
+                position.toArray(positions, index);
+            }
+
+            BABYLON.VertexData.ComputeNormals(positions, this.getIndices(), normals);
+
+            this.updateVerticesData(BABYLON.VertexBuffer.PositionKind, positions);
+            this.updateVerticesData(BABYLON.VertexBuffer.NormalKind, normals);
+        };
+
         Mesh.prototype.convertToFlatShadedMesh = function () {
             /// <summary>Update normals and vertices to get a flat shading rendering.</summary>
             /// <summary>Warning: This may imply adding vertices to the mesh in order to get exactly 3 vertices per face</summary>
@@ -744,9 +865,18 @@ var BABYLON;
         };
 
         // Cylinder and cone (Code inspired by SharpDX.org)
-        Mesh.CreateCylinder = function (name, height, diameterTop, diameterBottom, tessellation, scene, updatable) {
+        Mesh.CreateCylinder = function (name, height, diameterTop, diameterBottom, tessellation, subdivisions, scene, updatable) {
+            // subdivisions is a new parameter, we need to support old signature
+            if (scene === undefined || !(scene instanceof BABYLON.Scene)) {
+                if (scene !== undefined) {
+                    updatable = scene;
+                }
+                scene = subdivisions;
+                subdivisions = 1;
+            }
+
             var cylinder = new BABYLON.Mesh(name, scene);
-            var vertexData = BABYLON.VertexData.CreateCylinder(height, diameterTop, diameterBottom, tessellation);
+            var vertexData = BABYLON.VertexData.CreateCylinder(height, diameterTop, diameterBottom, tessellation, subdivisions);
 
             vertexData.applyToMesh(cylinder, updatable);
 
@@ -772,6 +902,17 @@ var BABYLON;
             return torusKnot;
         };
 
+        // Lines
+        Mesh.CreateLines = function (name, points, scene, updatable) {
+            var lines = new BABYLON.LinesMesh(name, scene, updatable);
+
+            var vertexData = BABYLON.VertexData.CreateLines(points);
+
+            vertexData.applyToMesh(lines, updatable);
+
+            return lines;
+        };
+
         // Plane & ground
         Mesh.CreatePlane = function (name, size, scene, updatable) {
             var plane = new BABYLON.Mesh(name, scene);
@@ -794,6 +935,16 @@ var BABYLON;
             ground._setReady(true);
 
             return ground;
+        };
+
+        Mesh.CreateTiledGround = function (name, xmin, zmin, xmax, zmax, subdivisions, precision, scene, updatable) {
+            var tiledGround = new BABYLON.Mesh(name, scene);
+
+            var vertexData = BABYLON.VertexData.CreateTiledGround(xmin, zmin, xmax, zmax, subdivisions, precision);
+
+            vertexData.applyToMesh(tiledGround, updatable);
+
+            return tiledGround;
         };
 
         Mesh.CreateGroundFromHeightMap = function (name, url, width, height, subdivisions, minHeight, maxHeight, scene, updatable) {

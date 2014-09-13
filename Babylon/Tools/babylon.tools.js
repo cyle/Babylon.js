@@ -1,8 +1,5 @@
-﻿
-var BABYLON;
+﻿var BABYLON;
 (function (BABYLON) {
-    
-
     // Screenshots
     var screenshotCanvas;
 
@@ -209,7 +206,7 @@ var BABYLON;
         };
 
         //ANY
-        Tools.LoadFile = function (url, callback, progressCallBack, database, useArrayBuffer) {
+        Tools.LoadFile = function (url, callback, progressCallBack, database, useArrayBuffer, onError) {
             url = Tools.CleanUrl(url);
 
             var noIndexedDB = function () {
@@ -225,10 +222,14 @@ var BABYLON;
 
                 request.onreadystatechange = function () {
                     if (request.readyState == 4) {
-                        if (request.status == 200) {
+                        if (request.status == 200 || BABYLON.Tools.ValidateXHRData(request, !useArrayBuffer ? 1 : 6)) {
                             callback(!useArrayBuffer ? request.responseText : request.response);
                         } else {
-                            throw new Error("Error status: " + request.status + " - Unable to load " + loadUrl);
+                            if (onError) {
+                                onError();
+                            } else {
+                                throw new Error("Error status: " + request.status + " - Unable to load " + loadUrl);
+                            }
                         }
                     }
                 };
@@ -237,15 +238,15 @@ var BABYLON;
             };
 
             var loadFromIndexedDB = function () {
-                database.loadSceneFromDB(url, callback, progressCallBack, noIndexedDB);
+                database.loadFileFromDB(url, callback, progressCallBack, noIndexedDB, useArrayBuffer);
             };
 
             if (url.indexOf("file:") !== -1) {
                 var fileName = url.substring(5);
                 BABYLON.Tools.ReadFile(BABYLON.FilesInput.FilesToLoad[fileName], callback, progressCallBack, true);
             } else {
-                // Caching only scenes files
-                if (database && url.indexOf(".babylon") !== -1 && (database.enableSceneOffline)) {
+                // Caching all files
+                if (database && database.enableSceneOffline) {
                     database.openAsync(loadFromIndexedDB, noIndexedDB);
                 } else {
                     noIndexedDB();
@@ -505,6 +506,46 @@ var BABYLON;
             }
         };
 
+        // XHR response validator for local file scenario
+        Tools.ValidateXHRData = function (xhr, dataType) {
+            if (typeof dataType === "undefined") { dataType = 7; }
+            try  {
+                if (dataType & 1) {
+                    if (xhr.responseText && xhr.responseText.length > 0) {
+                        return true;
+                    } else if (dataType === 1) {
+                        return false;
+                    }
+                }
+
+                if (dataType & 2) {
+                    // Check header width and height since there is no "TGA" magic number
+                    var tgaHeader = BABYLON.Internals.TGATools.GetTGAHeader(xhr.response);
+
+                    if (tgaHeader.width && tgaHeader.height && tgaHeader.width > 0 && tgaHeader.height > 0) {
+                        return true;
+                    } else if (dataType === 2) {
+                        return false;
+                    }
+                }
+
+                if (dataType & 4) {
+                    // Check for the "DDS" magic number
+                    var ddsHeader = new Uint8Array(xhr.response, 0, 3);
+
+                    if (ddsHeader[0] == 68 && ddsHeader[1] == 68 && ddsHeader[2] == 83) {
+                        return true;
+                    } else {
+                        return false;
+                    }
+                }
+            } catch (e) {
+                // Global protection
+            }
+
+            return false;
+        };
+
         Object.defineProperty(Tools, "NoneLogLevel", {
             get: function () {
                 return Tools._NoneLogLevel;
@@ -540,7 +581,6 @@ var BABYLON;
         Object.defineProperty(Tools, "AllLogLevel", {
             get: function () {
                 return Tools._MessageLogLevel | Tools._WarningLogLevel | Tools._ErrorLogLevel;
-                ;
             },
             enumerable: true,
             configurable: true

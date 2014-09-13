@@ -46,6 +46,9 @@
         public material: Material;
         public receiveShadows = false;
         public actionManager: ActionManager;
+        public renderOutline = false;
+        public outlineColor = BABYLON.Color3.Red();
+        public outlineWidth = 0.02;
 
         public useOctreeForRenderingSelection = true;
         public useOctreeForPicking = true;
@@ -58,6 +61,14 @@
         public _physicsMass: number;
         public _physicsFriction: number;
         public _physicRestitution: number;
+
+        // Collisions
+        public ellipsoid = new BABYLON.Vector3(0.5, 1, 0.5);
+        public ellipsoidOffset = new BABYLON.Vector3(0, 0, 0);
+        private _collider = new Collider();
+        private _oldPositionForCollisions = new BABYLON.Vector3(0, 0, 0);
+        private _diffPositionForCollisions = new BABYLON.Vector3(0, 0, 0);
+        private _newPositionForCollisions = new BABYLON.Vector3(0, 0, 0);
 
         // Cache
         private _localScaling = BABYLON.Matrix.Zero();
@@ -82,6 +93,7 @@
 
         public subMeshes: SubMesh[];
         public _submeshesOctree: Octree<SubMesh>;
+        public _intersectionsInProgress = new Array<AbstractMesh>();
 
         constructor(name: string, scene: Scene) {
             super(name, scene);
@@ -107,6 +119,9 @@
         }
 
         public getBoundingInfo(): BoundingInfo {
+            if (!this._boundingInfo) {
+                this._updateBoundingInfo();
+            }
             return this._boundingInfo;
         }
 
@@ -419,7 +434,7 @@
             return true;
         }
 
-        public intersectsMesh(mesh: Mesh, precise?: boolean): boolean {
+        public intersectsMesh(mesh: AbstractMesh, precise?: boolean): boolean {
             if (!this._boundingInfo || !mesh._boundingInfo) {
                 return false;
             }
@@ -509,12 +524,36 @@
             this.getScene().getPhysicsEngine()._applyImpulse(this, force, contactPoint);
         }
 
-        public setPhysicsLinkWith(otherMesh: Mesh, pivot1: Vector3, pivot2: Vector3): void {
+        public setPhysicsLinkWith(otherMesh: Mesh, pivot1: Vector3, pivot2: Vector3, options?: any): void {
             if (!this._physicImpostor) {
                 return;
             }
 
-            this.getScene().getPhysicsEngine()._createLink(this, otherMesh, pivot1, pivot2);
+            this.getScene().getPhysicsEngine()._createLink(this, otherMesh, pivot1, pivot2, options);
+        }
+
+        public updatePhysicsBodyPosition(): void {
+            if (!this._physicImpostor) {
+                return;
+            }
+            this.getScene().getPhysicsEngine()._updateBodyPosition(this);
+        }
+
+
+        // Collisions
+        public moveWithCollisions(velocity: Vector3): void {
+            var globalPosition = this.getAbsolutePosition();
+
+            globalPosition.subtractFromFloatsToRef(0, this.ellipsoid.y, 0, this._oldPositionForCollisions);
+            this._oldPositionForCollisions.addInPlace(this.ellipsoidOffset);
+            this._collider.radius = this.ellipsoid;
+
+            this.getScene()._getNewPosition(this._oldPositionForCollisions, velocity, this._collider, 3, this._newPositionForCollisions, this);
+            this._newPositionForCollisions.subtractToRef(this._oldPositionForCollisions, this._diffPositionForCollisions);
+
+            if (this._diffPositionForCollisions.length() > Engine.CollisionsEpsilon) {
+                this.position.addInPlace(this._diffPositionForCollisions);
+            }
         }
 
         // Submeshes octree
@@ -528,7 +567,7 @@
                 this._submeshesOctree = new BABYLON.Octree<SubMesh>(Octree.CreationFuncForSubMeshes, maxCapacity, maxDepth);
             }
 
-            this.computeWorldMatrix(true);            
+            this.computeWorldMatrix(true);
 
             // Update octree
             var bbox = this.getBoundingInfo().boundingBox;
@@ -557,7 +596,7 @@
 
         public _processCollisionsForSubMeshes(collider: Collider, transformMatrix: Matrix): void {
             var subMeshes: SubMesh[];
-            var len: number;            
+            var len: number;
 
             // Octrees
             if (this._submeshesOctree && this.useOctreeForCollisions) {
@@ -692,12 +731,25 @@
                 this.setPhysicsState(PhysicsEngine.NoImpostor);
             }
 
+            // Intersections in progress
+            for (index = 0; index < this._intersectionsInProgress.length; index++) {
+                var other = this._intersectionsInProgress[index];
+
+                var pos = other._intersectionsInProgress.indexOf(this);
+                other._intersectionsInProgress.splice(pos, 1);
+            }
+
+            this._intersectionsInProgress = [];
+
             // SubMeshes
             this.releaseSubMeshes();
 
             // Remove from scene
             var index = this.getScene().meshes.indexOf(this);
-            this.getScene().meshes.splice(index, 1);
+            if (index != -1) {
+                // Remove from the scene if mesh found 
+                this.getScene().meshes.splice(index, 1);
+            }
 
             if (!doNotRecurse) {
                 // Particles

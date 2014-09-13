@@ -410,7 +410,7 @@
             return vertexData;
         }
 
-        public static CreateCylinder(height: number, diameterTop: number, diameterBottom: number, tessellation: number): VertexData {
+        public static CreateCylinder(height: number, diameterTop: number, diameterBottom: number, tessellation: number, subdivisions: number = 1): VertexData {
             var radiusTop = diameterTop / 2;
             var radiusBottom = diameterBottom / 2;
             var indices = [];
@@ -422,11 +422,13 @@
             diameterTop = diameterTop || 0.5;
             diameterBottom = diameterBottom || 1;
             tessellation = tessellation || 16;
+            subdivisions = subdivisions || 1;
+            subdivisions = (subdivisions < 1) ? 1 : subdivisions;
 
             var getCircleVector = i => {
                 var angle = (i * 2.0 * Math.PI / tessellation);
-                var dx = Math.sin(angle);
-                var dz = Math.cos(angle);
+                var dx = Math.cos(angle);
+                var dz = Math.sin(angle);
 
                 return new BABYLON.Vector3(dx, 0, dz);
             };
@@ -437,81 +439,86 @@
                 if (radius == 0) {
                     return;
                 }
+                var vbase = positions.length / 3;
 
-                // Create cap indices.
-                for (var i = 0; i < tessellation - 2; i++) {
-                    var i1 = (i + 1) % tessellation;
-                    var i2 = (i + 2) % tessellation;
-
-                    if (!isTop) {
-                        var tmp = i1;
-                        i1 = i2;
-                        i2 = tmp;
-                    }
-
-                    var vbase = positions.length / 3;
-                    indices.push(vbase);
-                    indices.push(vbase + i1);
-                    indices.push(vbase + i2);
-                }
-
-                // Which end of the cylinder is this?
-                var normal = new BABYLON.Vector3(0, -1, 0);
-                var textureScale = new BABYLON.Vector2(-0.5, -0.5);
+                var offset = new BABYLON.Vector3(0, height / 2, 0);
+                var textureScale = new BABYLON.Vector2(0.5, 0.5);
 
                 if (!isTop) {
-                    normal = normal.scale(-1);
+                    offset.scaleInPlace(-1);
                     textureScale.x = -textureScale.x;
                 }
 
-                // Create cap vertices.
+                // Positions, normals & uvs
                 for (i = 0; i < tessellation; i++) {
                     var circleVector = getCircleVector(i);
-                    var position = circleVector.scale(radius).add(normal.scale(height));
-                    var textureCoordinate = new BABYLON.Vector2(circleVector.x * textureScale.x + 0.5, circleVector.z * textureScale.y + 0.5);
+                    var position = circleVector.scale(radius).add(offset);
+                    var textureCoordinate = new BABYLON.Vector2(
+                        circleVector.x * textureScale.x + 0.5,
+                        circleVector.z * textureScale.y + 0.5
+                        );
 
                     positions.push(position.x, position.y, position.z);
-                    normals.push(normal.x, normal.y, normal.z);
                     uvs.push(textureCoordinate.x, textureCoordinate.y);
+                }
+
+                // Indices
+                for (var i = 0; i < tessellation - 2; i++) {
+                    if (!isTop) {
+                        indices.push(vbase);
+                        indices.push(vbase + (i + 2) % tessellation);
+                        indices.push(vbase + (i + 1) % tessellation);
+                    } else {
+                        indices.push(vbase);
+                        indices.push(vbase + (i + 1) % tessellation);
+                        indices.push(vbase + (i + 2) % tessellation);
+                    }
                 }
             };
 
-            height /= 2;
-
-            var topOffset = new BABYLON.Vector3(0, 1, 0).scale(height);
-
+            var base = new BABYLON.Vector3(0, -1, 0).scale(height / 2);
+            var offset = new BABYLON.Vector3(0, 1, 0).scale(height / subdivisions);
             var stride = tessellation + 1;
 
-            // Create a ring of triangles around the outside of the cylinder.
+            // Positions, normals & uvs
             for (var i = 0; i <= tessellation; i++) {
-                var normal = getCircleVector(i);
-                var sideOffsetBottom = normal.scale(radiusBottom);
-                var sideOffsetTop = normal.scale(radiusTop);
+                var circleVector = getCircleVector(i);
                 var textureCoordinate = new BABYLON.Vector2(i / tessellation, 0);
+                var position, radius = radiusBottom;
 
-                var position = sideOffsetBottom.add(topOffset);
-                positions.push(position.x, position.y, position.z);
-                normals.push(normal.x, normal.y, normal.z);
-                uvs.push(textureCoordinate.x, textureCoordinate.y);
+                for (var s = 0; s <= subdivisions; s++) {
+                    // Update variables
+                    position = circleVector.scale(radius);
+                    position.addInPlace(base.add(offset.scale(s)));
+                    textureCoordinate.y += 1 / subdivisions;
+                    radius += (radiusTop - radiusBottom) / subdivisions;
 
-                position = sideOffsetTop.subtract(topOffset);
-                textureCoordinate.y += 1;
-                positions.push(position.x, position.y, position.z);
-                normals.push(normal.x, normal.y, normal.z);
-                uvs.push(textureCoordinate.x, textureCoordinate.y);
+                    // Push in arrays
+                    positions.push(position.x, position.y, position.z);
+                    uvs.push(textureCoordinate.x, textureCoordinate.y);
+                }
+            }
 
-                indices.push(i * 2);
-                indices.push((i * 2 + 2) % (stride * 2));
-                indices.push(i * 2 + 1);
+            subdivisions += 1;
+            // Indices
+            for (var s = 0; s < subdivisions - 1; s++) {
+                for (var i = 0; i <= tessellation; i++) {
+                    indices.push(i * subdivisions + s);
+                    indices.push((i * subdivisions + (s + subdivisions)) % (stride * subdivisions));
+                    indices.push(i * subdivisions + (s + 1));
 
-                indices.push(i * 2 + 1);
-                indices.push((i * 2 + 2) % (stride * 2));
-                indices.push((i * 2 + 3) % (stride * 2));
+                    indices.push(i * subdivisions + (s + 1));
+                    indices.push((i * subdivisions + (s + subdivisions)) % (stride * subdivisions));
+                    indices.push((i * subdivisions + (s + subdivisions + 1)) % (stride * subdivisions));
+                }
             }
 
             // Create flat triangle fan caps to seal the top and bottom.
             createCylinderCap(true);
             createCylinderCap(false);
+
+            // Normals
+            BABYLON.VertexData.ComputeNormals(positions, indices, normals);
 
             // Result
             var vertexData = new BABYLON.VertexData();
@@ -587,6 +594,28 @@
             return vertexData;
         }
 
+        public static CreateLines(points: Vector3[]): VertexData {
+            var indices = [];
+            var positions = [];
+
+            for (var index = 0; index < points.length; index++) {
+                positions.push(points[index].x, points[index].y, points[index].z);
+
+                if (index > 0) {
+                    indices.push(index - 1);
+                    indices.push(index);
+                }
+            }
+
+            // Result
+            var vertexData = new BABYLON.VertexData();
+
+            vertexData.indices = indices;
+            vertexData.positions = positions;
+
+            return vertexData;
+        }
+
         public static CreateGround(width: number, height: number, subdivisions: number): VertexData {
             var indices = [];
             var positions = [];
@@ -632,7 +661,84 @@
             return vertexData;
         }
 
-        public static CreateGroundFromHeightMap(width: number, height: number, subdivisions: number, minHeight: number, maxHeight: number, buffer: Uint8Array, bufferWidth:  number, bufferHeight: number): VertexData {
+        public static CreateTiledGround(xmin: number, zmin: number, xmax: number, zmax: number, subdivisions = { w: 1, h: 1 }, precision = { w: 1, h: 1 }): VertexData {
+            var indices = [];
+            var positions = [];
+            var normals = [];
+            var uvs = [];
+            var row, col, tileRow, tileCol;
+
+            subdivisions.h = (subdivisions.w < 1) ? 1 : subdivisions.h;
+            subdivisions.w = (subdivisions.w < 1) ? 1 : subdivisions.w;
+            precision.w = (precision.w < 1) ? 1 : precision.w;
+            precision.h = (precision.h < 1) ? 1 : precision.h;
+
+            var tileSize = {
+                'w': (xmax - xmin) / subdivisions.w,
+                'h': (zmax - zmin) / subdivisions.h
+            };
+
+            for (tileRow = 0; tileRow < subdivisions.h; tileRow++) {
+                for (tileCol = 0; tileCol < subdivisions.w; tileCol++) {
+                    applyTile(
+                        xmin + tileCol * tileSize.w,
+                        zmin + tileRow * tileSize.h,
+                        xmin + (tileCol + 1) * tileSize.w,
+                        zmin + (tileRow + 1) * tileSize.h
+                        );
+                }
+            }
+
+            function applyTile(xTileMin: number, zTileMin: number, xTileMax: number, zTileMax: number) {
+                // Indices
+                var base = positions.length / 3;
+                var rowLength = precision.w + 1;
+                for (row = 0; row < precision.h; row++) {
+                    for (col = 0; col < precision.w; col++) {
+                        var square = [
+                            base + col + row * rowLength,
+                            base + (col + 1) + row * rowLength,
+                            base + (col + 1) + (row + 1) * rowLength,
+                            base + col + (row + 1) * rowLength
+                        ];
+
+                        indices.push(square[1]);
+                        indices.push(square[2]);
+                        indices.push(square[3]);
+                        indices.push(square[0]);
+                        indices.push(square[1]);
+                        indices.push(square[3]);
+                    }
+                }
+
+                // Position, normals and uvs
+                var position = BABYLON.Vector3.Zero();
+                var normal = new BABYLON.Vector3(0, 1.0, 0);
+                for (row = 0; row <= precision.h; row++) {
+                    position.z = (row * (zTileMax - zTileMin)) / precision.h + zTileMin;
+                    for (col = 0; col <= precision.w; col++) {
+                        position.x = (col * (xTileMax - xTileMin)) / precision.w + xTileMin;
+                        position.y = 0;
+
+                        positions.push(position.x, position.y, position.z);
+                        normals.push(normal.x, normal.y, normal.z);
+                        uvs.push(col / precision.w, row / precision.h);
+                    }
+                }
+            }
+
+            // Result
+            var vertexData = new BABYLON.VertexData();
+
+            vertexData.indices = indices;
+            vertexData.positions = positions;
+            vertexData.normals = normals;
+            vertexData.uvs = uvs;
+
+            return vertexData;
+        }
+
+        public static CreateGroundFromHeightMap(width: number, height: number, subdivisions: number, minHeight: number, maxHeight: number, buffer: Uint8Array, bufferWidth: number, bufferHeight: number): VertexData {
             var indices = [];
             var positions = [];
             var normals = [];

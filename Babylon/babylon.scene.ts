@@ -10,12 +10,16 @@
         public static FOGMODE_EXP2 = 2;
         public static FOGMODE_LINEAR = 3;
 
+        public static MinDeltaTime = 1.0;
+        public static MaxDeltaTime = 1000.0;
+
         // Members
         public autoClear = true;
         public clearColor = new BABYLON.Color3(0.2, 0.2, 0.3);
         public ambientColor = new BABYLON.Color3(0, 0, 0);
         public beforeRender: () => void;
         public afterRender: () => void;
+        public onDispose: () => void;
         public beforeCameraRender: (camera: Camera) => void;
         public afterCameraRender: (camera: Camera) => void;
         public forceWireframe = false;
@@ -25,9 +29,14 @@
         private _onPointerMove: (evt: PointerEvent) => void;
         private _onPointerDown: (evt: PointerEvent) => void;
         public onPointerDown: (evt: PointerEvent, pickInfo: PickingInfo) => void;
+        public cameraToUseForPointers: Camera = null; // Define this parameter if you are using multiple cameras and you want to specify which one should be used for pointer position
         private _pointerX: number;
         private _pointerY: number;
         private _meshUnderPointer: AbstractMesh;
+
+        // Keyboard
+        private _onKeyDown: (evt: Event) => void;
+        private _onKeyUp: (evt: Event) => void;
 
         // Fog
         public fogMode = BABYLON.Scene.FOGMODE_NONE;
@@ -99,6 +108,8 @@
 
         // Actions
         public actionManager: ActionManager;
+        public _actionManagers = new Array<ActionManager>();
+        private _meshesForIntersections = new SmartArray<AbstractMesh>(256);
 
         // Private
         private _engine: Engine;
@@ -142,6 +153,7 @@
         private _scaledVelocity = Vector3.Zero();
 
         private _boundingBoxRenderer: BoundingBoxRenderer;
+        private _outlineRenderer: OutlineRenderer;
 
         private _viewMatrix: Matrix;
         private _projectionMatrix: Matrix;
@@ -149,7 +161,7 @@
 
         private _selectionOctree: Octree<AbstractMesh>;
 
-        private _pointerOverMesh: AbstractMesh;
+        private _pointerOverMesh: AbstractMesh;      
 
         // Constructor
         constructor(engine: Engine) {
@@ -164,6 +176,7 @@
             this.postProcessRenderPipelineManager = new PostProcessRenderPipelineManager();
 
             this._boundingBoxRenderer = new BoundingBoxRenderer(this);
+            this._outlineRenderer = new OutlineRenderer(this);
 
             this.attachControl();
         }
@@ -183,6 +196,10 @@
 
         public getBoundingBoxRenderer(): BoundingBoxRenderer {
             return this._boundingBoxRenderer;
+        }
+
+        public getOutlineRenderer(): OutlineRenderer {
+            return this._outlineRenderer;
         }
 
         public getEngine(): Engine {
@@ -238,20 +255,35 @@
             return this._renderId;
         }
 
+        private _updatePointerPosition(evt: PointerEvent): void {
+            var canvasRect = this._engine.getRenderingCanvasClientRect();
+
+            this._pointerX = evt.clientX - canvasRect.left;
+            this._pointerY = evt.clientY - canvasRect.top;
+
+            if (this.cameraToUseForPointers) {
+                this._pointerX = this._pointerX - this.cameraToUseForPointers.viewport.x * this._engine.getRenderWidth();
+                this._pointerY = this._pointerY - this.cameraToUseForPointers.viewport.y * this._engine.getRenderHeight();
+            }
+        }
+
         // Pointers handling
         public attachControl() {
             this._onPointerMove = (evt: PointerEvent) => {
                 var canvas = this._engine.getRenderingCanvas();
 
-                this._pointerX = evt.offsetX || evt.layerX;
-                this._pointerY = evt.offsetY || evt.layerY;
-                var pickResult = this.pick(this._pointerX, this._pointerY, mesh => mesh.actionManager && mesh.isPickable);
+                this._updatePointerPosition(evt);
+
+                var pickResult = this.pick(this._pointerX, this._pointerY,
+                    (mesh: AbstractMesh): boolean => mesh.isPickable && mesh.isVisible && mesh.isReady() && mesh.actionManager && mesh.actionManager.hasPointerTriggers,
+                    false,
+                    this.cameraToUseForPointers);
 
                 if (pickResult.hit) {
+                    this._meshUnderPointer = pickResult.pickedMesh;
+
                     this.setPointerOverMesh(pickResult.pickedMesh);
                     canvas.style.cursor = "pointer";
-
-                    this._meshUnderPointer = pickResult.pickedMesh;
                 } else {
                     this.setPointerOverMesh(null);
                     canvas.style.cursor = "";
@@ -260,19 +292,30 @@
             };
 
             this._onPointerDown = (evt: PointerEvent) => {
-                var pickResult = this.pick(evt.offsetX || evt.layerX, evt.offsetY || evt.layerY);
+
+                var predicate = null;
+
+                if (!this.onPointerDown) {
+                    predicate = (mesh: AbstractMesh): boolean => {
+                        return mesh.isPickable && mesh.isVisible && mesh.isReady() && mesh.actionManager && mesh.actionManager.hasPickTriggers;
+                    };
+                }
+
+                this._updatePointerPosition(evt);
+
+                var pickResult = this.pick(this._pointerX, this._pointerY, predicate, false, this.cameraToUseForPointers);
 
                 if (pickResult.hit) {
                     if (pickResult.pickedMesh.actionManager) {
-                        switch (evt.buttons) {
-                            case 1:
+                        switch (evt.button) {
+                            case 0:
                                 pickResult.pickedMesh.actionManager.processTrigger(BABYLON.ActionManager.OnLeftPickTrigger, ActionEvent.CreateNew(pickResult.pickedMesh));
+                                break;
+                            case 1:
+                                pickResult.pickedMesh.actionManager.processTrigger(BABYLON.ActionManager.OnCenterPickTrigger, ActionEvent.CreateNew(pickResult.pickedMesh));
                                 break;
                             case 2:
                                 pickResult.pickedMesh.actionManager.processTrigger(BABYLON.ActionManager.OnRightPickTrigger, ActionEvent.CreateNew(pickResult.pickedMesh));
-                                break;
-                            case 3:
-                                pickResult.pickedMesh.actionManager.processTrigger(BABYLON.ActionManager.OnCenterPickTrigger, ActionEvent.CreateNew(pickResult.pickedMesh));
                                 break;
                         }
                         pickResult.pickedMesh.actionManager.processTrigger(BABYLON.ActionManager.OnPickTrigger, ActionEvent.CreateNew(pickResult.pickedMesh));
@@ -284,16 +327,34 @@
                 }
             };
 
+            this._onKeyDown = (evt: Event) => {
+                if (this.actionManager) {
+                    this.actionManager.processTrigger(BABYLON.ActionManager.OnKeyDownTrigger, ActionEvent.CreateNewFromScene(this, evt));
+                }
+            };
+
+            this._onKeyUp = (evt: Event) => {
+                if (this.actionManager) {
+                    this.actionManager.processTrigger(BABYLON.ActionManager.OnKeyUpTrigger, ActionEvent.CreateNewFromScene(this, evt));
+                }
+            };
+
 
             var eventPrefix = Tools.GetPointerPrefix();
             this._engine.getRenderingCanvas().addEventListener(eventPrefix + "move", this._onPointerMove, false);
             this._engine.getRenderingCanvas().addEventListener(eventPrefix + "down", this._onPointerDown, false);
+
+            window.addEventListener("keydown", this._onKeyDown, false);
+            window.addEventListener("keyup", this._onKeyUp, false);
         }
 
         public detachControl() {
             var eventPrefix = Tools.GetPointerPrefix();
             this._engine.getRenderingCanvas().removeEventListener(eventPrefix + "move", this._onPointerMove);
             this._engine.getRenderingCanvas().removeEventListener(eventPrefix + "down", this._onPointerDown);
+
+            window.removeEventListener("keydown", this._onKeyDown);
+            window.removeEventListener("keyup", this._onKeyUp);
         }
 
         // Ready
@@ -734,6 +795,11 @@
                 mesh.computeWorldMatrix();
                 mesh._preActivate();
 
+                // Intersections
+                if (mesh.actionManager && mesh.actionManager.hasSpecificTriggers([ActionManager.OnIntersectionEnterTrigger, ActionManager.OnIntersectionExitTrigger])) {
+                    this._meshesForIntersections.pushNoDuplicate(mesh);
+                }
+
                 if (mesh.isEnabled() && mesh.isVisible && mesh.visibility > 0 && ((mesh.layerMask & this.activeCamera.layerMask) != 0) && mesh.isInFrustum(this._frustumPlanes)) {
                     this._activeMeshes.push(mesh);
                     mesh._activate(this._renderId);
@@ -928,6 +994,37 @@
             this.activeCamera._updateFromScene();
         }
 
+        private _checkIntersections(): void {
+            for (var index = 0; index < this._meshesForIntersections.length; index++) {
+                var sourceMesh = this._meshesForIntersections.data[index];
+
+                for (var actionIndex = 0; actionIndex < sourceMesh.actionManager.actions.length; actionIndex++) {
+                    var action = sourceMesh.actionManager.actions[actionIndex];
+
+                    if (action.trigger == ActionManager.OnIntersectionEnterTrigger || action.trigger == ActionManager.OnIntersectionExitTrigger) {
+                        var otherMesh = action.getTriggerParameter();
+
+                        var areIntersecting = otherMesh.intersectsMesh(sourceMesh, false);
+                        var currentIntersectionInProgress = sourceMesh._intersectionsInProgress.indexOf(otherMesh);
+
+                        if (areIntersecting && currentIntersectionInProgress === -1 && action.trigger == ActionManager.OnIntersectionEnterTrigger) {
+                            sourceMesh.actionManager.processTrigger(ActionManager.OnIntersectionEnterTrigger, ActionEvent.CreateNew(sourceMesh));
+                            sourceMesh._intersectionsInProgress.push(otherMesh);
+
+                        } else if (!areIntersecting && currentIntersectionInProgress > -1 && action.trigger == ActionManager.OnIntersectionExitTrigger) {
+                            sourceMesh.actionManager.processTrigger(ActionManager.OnIntersectionExitTrigger, ActionEvent.CreateNew(sourceMesh));
+
+                            var indexOfOther = sourceMesh._intersectionsInProgress.indexOf(otherMesh);
+
+                            if (indexOfOther > -1) {
+                                sourceMesh._intersectionsInProgress.splice(indexOfOther, 1);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         public render(): void {
             var startDate = new Date().getTime();
             this._particlesDuration = 0;
@@ -937,6 +1034,7 @@
             this._evaluateActiveMeshesDuration = 0;
             this._totalVertices = 0;
             this._activeVertices = 0;
+            this._meshesForIntersections.reset();
 
             // Actions
             if (this.actionManager) {
@@ -953,7 +1051,7 @@
             }
 
             // Animations
-            var deltaTime = BABYLON.Tools.GetDeltaTime();
+            var deltaTime = Math.max(Scene.MinDeltaTime, Math.min(BABYLON.Tools.GetDeltaTime(), Scene.MaxDeltaTime));
             this._animationRatio = deltaTime * (60.0 / 1000.0);
             this._animate();
 
@@ -989,6 +1087,9 @@
                 this._processSubCameras(this.activeCamera);
             }
 
+            // Intersection checks
+            this._checkIntersections();
+
             // After render
             if (this.afterRender) {
                 this.afterRender();
@@ -1014,6 +1115,10 @@
             this._boundingBoxRenderer.dispose();
 
             // Events
+            if (this.onDispose) {
+                this.onDispose();
+            }
+
             this.detachControl();
 
             // Detach cameras
@@ -1073,25 +1178,28 @@
 
             // Remove from engine
             index = this._engine.scenes.indexOf(this);
-            this._engine.scenes.splice(index, 1);
+
+            if (index > -1) {
+                this._engine.scenes.splice(index, 1);
+            }
 
             this._engine.wipeCaches();
         }
 
         // Collisions
-        public _getNewPosition(position: Vector3, velocity: Vector3, collider: Collider, maximumRetry: number, finalPosition: Vector3): void {
+        public _getNewPosition(position: Vector3, velocity: Vector3, collider: Collider, maximumRetry: number, finalPosition: Vector3, excludedMesh: AbstractMesh = null): void {
             position.divideToRef(collider.radius, this._scaledPosition);
             velocity.divideToRef(collider.radius, this._scaledVelocity);
 
             collider.retry = 0;
             collider.initialVelocity = this._scaledVelocity;
             collider.initialPosition = this._scaledPosition;
-            this._collideWithWorld(this._scaledPosition, this._scaledVelocity, collider, maximumRetry, finalPosition);
+            this._collideWithWorld(this._scaledPosition, this._scaledVelocity, collider, maximumRetry, finalPosition, excludedMesh);
 
             finalPosition.multiplyInPlace(collider.radius);
         }
 
-        private _collideWithWorld(position: Vector3, velocity: Vector3, collider: Collider, maximumRetry: number, finalPosition: Vector3): void {
+        private _collideWithWorld(position: Vector3, velocity: Vector3, collider: Collider, maximumRetry: number, finalPosition: Vector3, excludedMesh: AbstractMesh = null): void {
             var closeDistance = BABYLON.Engine.CollisionsEpsilon * 10.0;
 
             if (collider.retry >= maximumRetry) {
@@ -1104,7 +1212,7 @@
             // Check all meshes
             for (var index = 0; index < this.meshes.length; index++) {
                 var mesh = this.meshes[index];
-                if (mesh.isEnabled() && mesh.checkCollisions) {
+                if (mesh.isEnabled() && mesh.checkCollisions && mesh.subMeshes && mesh !== excludedMesh) {
                     mesh._checkCollision(collider);
                 }
             }
@@ -1124,7 +1232,7 @@
             }
 
             collider.retry++;
-            this._collideWithWorld(position, velocity, collider, maximumRetry, finalPosition);
+            this._collideWithWorld(position, velocity, collider, maximumRetry, finalPosition, excludedMesh);
         }
 
         // Octrees
@@ -1169,8 +1277,8 @@
             // Moving coordinates to local viewport world
             x = x / this._engine.getHardwareScalingLevel() - viewport.x;
             y = y / this._engine.getHardwareScalingLevel() - (this._engine.getRenderHeight() - viewport.y - viewport.height);
-
             return BABYLON.Ray.CreateNew(x, y, viewport.width, viewport.height, world ? world : BABYLON.Matrix.Identity(), camera.getViewMatrix(), camera.getProjectionMatrix());
+            //       return BABYLON.Ray.CreateNew(x / window.devicePixelRatio, y / window.devicePixelRatio, viewport.width, viewport.height, world ? world : BABYLON.Matrix.Identity(), camera.getViewMatrix(), camera.getProjectionMatrix());
         }
 
         private _internalPick(rayFunction: (world: Matrix) => Ray, predicate: (mesh: AbstractMesh) => boolean, fastCheck?: boolean): PickingInfo {
@@ -1207,7 +1315,7 @@
             return pickingInfo || new BABYLON.PickingInfo();
         }
 
-        public pick(x: number, y: number, predicate?: (mesh: Mesh) => boolean, fastCheck?: boolean, camera?: Camera): PickingInfo {
+        public pick(x: number, y: number, predicate?: (mesh: AbstractMesh) => boolean, fastCheck?: boolean, camera?: Camera): PickingInfo {
             /// <summary>Launch a ray to try to pick a mesh in the scene</summary>
             /// <param name="x">X position on screen</param>
             /// <param name="y">Y position on screen</param>

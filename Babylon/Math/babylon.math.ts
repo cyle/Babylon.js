@@ -18,6 +18,10 @@
             array[index + 2] = this.b;
         }
 
+        public toColor4(alpha = 1): Color4 {
+            return new Color4(this.r, this.g, this.b, alpha);
+        }
+
         public asArray(): number[] {
             var result = [];
 
@@ -194,11 +198,7 @@
             result.a = left.a + (right.a - left.a) * amount;
         }
 
-        public static FromArray(array: number[], offset: number): Color4 {
-            if (!offset) {
-                offset = 0;
-            }
-
+        public static FromArray(array: number[], offset: number = 0): Color4 {
             return new Color4(array[offset], array[offset + 1], array[offset + 2], array[offset + 3]);
         }
 
@@ -238,7 +238,16 @@
             this.y = source.y;
         }
 
+        public copyFromFloats(x: number, y: number): void {
+            this.x = x;
+            this.y = y;
+        }
+
         public add(otherVector: Vector2): Vector2 {
+            return new Vector2(this.x + otherVector.x, this.y + otherVector.y);
+        }
+
+        public addVector3(otherVector: Vector3): Vector2 {
             return new Vector2(this.x + otherVector.x, this.y + otherVector.y);
         }
 
@@ -292,6 +301,19 @@
         // Statics
         public static Zero(): Vector2 {
             return new Vector2(0, 0);
+        }
+
+        public static FromArray(array: number[], offset?: number): Vector2 {
+            if (!offset) {
+                offset = 0;
+            }
+
+            return new Vector2(array[offset], array[offset + 1]);
+        }
+
+        public static FromArrayToRef(array: number[], offset: number, result: Vector2): void {
+            result.x = array[offset];
+            result.y = array[offset + 1];
         }
 
         public static CatmullRom(value1: Vector2, value2: Vector2, value3: Vector2, value4: Vector2, amount: number): Vector2 {
@@ -477,6 +499,12 @@
 
         public equals(otherVector: Vector3): boolean {
             return otherVector && this.x === otherVector.x && this.y === otherVector.y && this.z === otherVector.z;
+        }
+
+        public equalsWithEpsilon(otherVector: Vector3): boolean {
+            return Math.abs(this.x - otherVector.x) < Engine.Epsilon &&
+                Math.abs(this.y - otherVector.y) < Engine.Epsilon &&
+                Math.abs(this.z - otherVector.z) < Engine.Epsilon;
         }
 
         public equalsToFloats(x: number, y: number, z: number): boolean {
@@ -800,7 +828,7 @@
     }
 
     export class Quaternion {
-        constructor(public x: number = 0, public y: number = 0, public z: number = 0, public w: number = 0) {
+        constructor(public x: number = 0, public y: number = 0, public z: number = 0, public w: number = 1) {
 
         }
 
@@ -921,6 +949,58 @@
             result.m[15] = 1.0;
         }
 
+        public fromRotationMatrix(matrix: Matrix): void {
+            var data = matrix.m;
+            var m11 = data[0], m12 = data[4], m13 = data[8];
+            var m21 = data[1], m22 = data[5], m23 = data[9];
+            var m31 = data[2], m32 = data[6], m33 = data[10];
+            var trace = m11 + m22 + m33;
+            var s;
+
+            if (trace > 0) {
+                s = 0.5 / Math.sqrt(trace + 1.0);
+
+                this.w = 0.25 / s;
+                this.x = (m32 - m23) * s;
+                this.y = (m13 - m31) * s;
+                this.z = (m21 - m12) * s;
+
+                return;
+            }
+
+            if (m11 > m22 && m11 > m33) {
+
+                s = 2.0 * Math.sqrt(1.0 + m11 - m22 - m33);
+
+                this.w = (m32 - m23) / s;
+                this.x = 0.25 * s;
+                this.y = (m12 + m21) / s;
+                this.z = (m13 + m31) / s;
+
+                return;
+            }
+
+            if (m22 > m33) {
+
+                s = 2.0 * Math.sqrt(1.0 + m22 - m11 - m33);
+
+                this.w = (m13 - m31) / s;
+                this.x = (m12 + m21) / s;
+                this.y = 0.25 * s;
+                this.z = (m23 + m32) / s;
+
+                return;
+
+            }
+
+            s = 2.0 * Math.sqrt(1.0 + m33 - m11 - m22);
+
+            this.w = (m21 - m12) / s;
+            this.x = (m13 + m31) / s;
+            this.y = (m23 + m32) / s;
+            this.z = 0.25 * s;
+        }
+
         // Statics
         public static RotationAxis(axis: Vector3, angle: number): Quaternion {
             var result = new Quaternion();
@@ -967,7 +1047,6 @@
             result.z = (cosYaw * cosPitch * sinRoll) - (sinYaw * sinPitch * cosRoll);
             result.w = (cosYaw * cosPitch * cosRoll) + (sinYaw * sinPitch * sinRoll);
         }
-
 
         public static Slerp(left: Quaternion, right: Quaternion, amount: number): Quaternion {
             var num2;
@@ -2022,6 +2101,6 @@
     export class Axis {
         public static X: Vector3 = new BABYLON.Vector3(1, 0, 0);
         public static Y: Vector3 = new BABYLON.Vector3(0, 1, 0);
-        public static Z: Vector3 =new BABYLON.Vector3(0, 0, 1);
+        public static Z: Vector3 = new BABYLON.Vector3(0, 0, 1);
     };
 }

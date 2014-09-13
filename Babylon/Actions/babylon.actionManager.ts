@@ -1,13 +1,17 @@
 ﻿module BABYLON {
 
     export class ActionEvent {
-        constructor(public source: AbstractMesh, public pointerX: number, public pointerY: number, public meshUnderPointer: AbstractMesh) {
+        constructor(public source: AbstractMesh, public pointerX: number, public pointerY: number, public meshUnderPointer: AbstractMesh, public sourceEvent?: any) {
             
         }
 
         public static CreateNew(source: AbstractMesh): ActionEvent {
             var scene = source.getScene();
             return new ActionEvent(source, scene.pointerX, scene.pointerY, scene.meshUnderPointer);
+        }
+
+        public static CreateNewFromScene(scene: Scene, evt:Event): ActionEvent {
+            return new ActionEvent(null, scene.pointerX, scene.pointerY, scene.meshUnderPointer, evt);
         }
     }
 
@@ -21,6 +25,10 @@
         private static _OnPointerOverTrigger = 5;
         private static _OnPointerOutTrigger = 6;
         private static _OnEveryFrameTrigger = 7;
+        private static _OnIntersectionEnterTrigger = 8;
+        private static _OnIntersectionExitTrigger = 9;
+        private static _OnKeyDownTrigger = 10;
+        private static _OnKeyUpTrigger = 11;
 
         public static get NothingTrigger(): number {
             return ActionManager._NothingTrigger;
@@ -54,6 +62,21 @@
             return ActionManager._OnEveryFrameTrigger;
         }
 
+        public static get OnIntersectionEnterTrigger(): number {
+            return ActionManager._OnIntersectionEnterTrigger;
+        }
+
+        public static get OnIntersectionExitTrigger(): number {
+            return ActionManager._OnIntersectionExitTrigger;
+        }
+
+        public static get OnKeyDownTrigger(): number {
+            return ActionManager._OnKeyDownTrigger;
+        }
+
+        public static get OnKeyUpTrigger(): number {
+            return ActionManager._OnKeyUpTrigger;
+        }
         // Members
         public actions = new Array<Action>();
 
@@ -61,11 +84,57 @@
 
         constructor(scene: Scene) {
             this._scene = scene;
+
+            scene._actionManagers.push(this);
         }
 
         // Methods
+        public dispose(): void {
+            var index = this._scene._actionManagers.indexOf(this);
+
+            if (index > -1) {
+                this._scene._actionManagers.splice(index, 1);
+            }
+        }
+
         public getScene(): Scene {
             return this._scene;
+        }
+
+        public hasSpecificTriggers(triggers: number[]): boolean {
+            for (var index = 0; index < this.actions.length; index++) {
+                var action = this.actions[index];
+
+                if (triggers.indexOf(action.trigger) > -1) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        public get hasPointerTriggers(): boolean {
+            for (var index = 0; index < this.actions.length; index++) {
+                var action = this.actions[index];
+
+                if (action.trigger >= ActionManager._OnPickTrigger && action.trigger <= ActionManager._OnPointerOutTrigger) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        public get hasPickTriggers(): boolean {
+            for (var index = 0; index < this.actions.length; index++) {
+                var action = this.actions[index];
+
+                if (action.trigger >= ActionManager._OnPickTrigger && action.trigger <= ActionManager._OnCenterPickTrigger) {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         public registerAction(action: Action): Action {
@@ -90,6 +159,16 @@
                 var action = this.actions[index];
 
                 if (action.trigger === trigger) {
+                    if (trigger == ActionManager.OnKeyUpTrigger || trigger == ActionManager.OnKeyDownTrigger) {
+                        var parameter = action.getTriggerParameter();
+
+                        if (parameter) {
+                            if (evt.sourceEvent.key !== parameter) {
+                                continue;
+                            }
+                        }
+                    }
+
                     action._executeCurrent(evt);
                 }
             }

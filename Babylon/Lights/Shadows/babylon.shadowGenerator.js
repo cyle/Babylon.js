@@ -4,7 +4,7 @@
         function ShadowGenerator(mapSize, light) {
             var _this = this;
             // Members
-            this.useVarianceShadowMap = true;
+            this.filter = ShadowGenerator.FILTER_VARIANCESHADOWMAP;
             this._darkness = 0;
             this._transparencyShadow = false;
             this._viewMatrix = BABYLON.Matrix.Zero();
@@ -32,7 +32,7 @@
                 engine.setState(subMesh.getMaterial().backFaceCulling);
 
                 // Managing instances
-                var batch = mesh._getInstancesRenderList();
+                var batch = mesh._getInstancesRenderList(subMesh._id);
 
                 if (batch.mustReturn) {
                     return;
@@ -40,15 +40,16 @@
 
                 var hardwareInstancedRendering = (engine.getCaps().instancedArrays !== null) && (batch.visibleInstances !== null);
 
-                if (_this.isReady(mesh, hardwareInstancedRendering)) {
+                if (_this.isReady(subMesh, hardwareInstancedRendering)) {
                     engine.enableEffect(_this._effect);
                     mesh._bind(subMesh, _this._effect, false);
+                    var material = subMesh.getMaterial();
 
                     _this._effect.setMatrix("viewProjection", _this.getTransformMatrix());
 
                     // Alpha test
-                    if (mesh.material && mesh.material.needAlphaTesting()) {
-                        var alphaTexture = mesh.material.getAlphaTestTexture();
+                    if (material && material.needAlphaTesting()) {
+                        var alphaTexture = material.getAlphaTestTexture();
                         _this._effect.setTexture("diffuseSampler", alphaTexture);
                         _this._effect.setMatrix("diffuseMatrix", alphaTexture.getTextureMatrix());
                     }
@@ -63,16 +64,16 @@
                     if (hardwareInstancedRendering) {
                         mesh._renderWithInstances(subMesh, false, batch, _this._effect, engine);
                     } else {
-                        if (batch.renderSelf) {
+                        if (batch.renderSelf[subMesh._id]) {
                             _this._effect.setMatrix("world", mesh.getWorldMatrix());
 
                             // Draw
                             mesh._draw(subMesh, true);
                         }
 
-                        if (batch.visibleInstances) {
-                            for (var instanceIndex = 0; instanceIndex < batch.visibleInstances.length; instanceIndex++) {
-                                var instance = batch.visibleInstances[instanceIndex];
+                        if (batch.visibleInstances[subMesh._id]) {
+                            for (var instanceIndex = 0; instanceIndex < batch.visibleInstances[subMesh._id].length; instanceIndex++) {
+                                var instance = batch.visibleInstances[subMesh._id][instanceIndex];
 
                                 _this._effect.setMatrix("world", instance.getWorldMatrix());
 
@@ -105,7 +106,54 @@
                 }
             };
         }
-        ShadowGenerator.prototype.isReady = function (mesh, useInstances) {
+        Object.defineProperty(ShadowGenerator, "FILTER_NONE", {
+            // Static
+            get: function () {
+                return ShadowGenerator._FILTER_NONE;
+            },
+            enumerable: true,
+            configurable: true
+        });
+
+        Object.defineProperty(ShadowGenerator, "FILTER_VARIANCESHADOWMAP", {
+            get: function () {
+                return ShadowGenerator._FILTER_VARIANCESHADOWMAP;
+            },
+            enumerable: true,
+            configurable: true
+        });
+
+        Object.defineProperty(ShadowGenerator, "FILTER_POISSONSAMPLING", {
+            get: function () {
+                return ShadowGenerator._FILTER_POISSONSAMPLING;
+            },
+            enumerable: true,
+            configurable: true
+        });
+
+        Object.defineProperty(ShadowGenerator.prototype, "useVarianceShadowMap", {
+            get: function () {
+                return this.filter === ShadowGenerator.FILTER_VARIANCESHADOWMAP;
+            },
+            set: function (value) {
+                this.filter = (value ? ShadowGenerator.FILTER_VARIANCESHADOWMAP : ShadowGenerator.FILTER_NONE);
+            },
+            enumerable: true,
+            configurable: true
+        });
+
+        Object.defineProperty(ShadowGenerator.prototype, "usePoissonSampling", {
+            get: function () {
+                return this.filter === ShadowGenerator.FILTER_POISSONSAMPLING;
+            },
+            set: function (value) {
+                this.filter = (value ? ShadowGenerator.FILTER_POISSONSAMPLING : ShadowGenerator.FILTER_NONE);
+            },
+            enumerable: true,
+            configurable: true
+        });
+
+        ShadowGenerator.prototype.isReady = function (subMesh, useInstances) {
             var defines = [];
 
             if (this.useVarianceShadowMap) {
@@ -114,8 +162,11 @@
 
             var attribs = [BABYLON.VertexBuffer.PositionKind];
 
+            var mesh = subMesh.getMesh();
+            var material = subMesh.getMaterial();
+
             // Alpha test
-            if (mesh.material && mesh.material.needAlphaTesting()) {
+            if (material && material.needAlphaTesting()) {
                 defines.push("#define ALPHATEST");
                 if (mesh.isVerticesDataPresent(BABYLON.VertexBuffer.UVKind)) {
                     attribs.push(BABYLON.VertexBuffer.UVKind);
@@ -206,6 +257,9 @@
         ShadowGenerator.prototype.dispose = function () {
             this._shadowMap.dispose();
         };
+        ShadowGenerator._FILTER_NONE = 0;
+        ShadowGenerator._FILTER_VARIANCESHADOWMAP = 1;
+        ShadowGenerator._FILTER_POISSONSAMPLING = 2;
         return ShadowGenerator;
     })();
     BABYLON.ShadowGenerator = ShadowGenerator;

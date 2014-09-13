@@ -25,12 +25,22 @@ var BABYLON;
             this.checkCollisions = false;
             this.renderingGroupId = 0;
             this.receiveShadows = false;
+            this.renderOutline = false;
+            this.outlineColor = BABYLON.Color3.Red();
+            this.outlineWidth = 0.02;
             this.useOctreeForRenderingSelection = true;
             this.useOctreeForPicking = true;
             this.useOctreeForCollisions = true;
             this.layerMask = 0xFFFFFFFF;
             // Physics
             this._physicImpostor = BABYLON.PhysicsEngine.NoImpostor;
+            // Collisions
+            this.ellipsoid = new BABYLON.Vector3(0.5, 1, 0.5);
+            this.ellipsoidOffset = new BABYLON.Vector3(0, 0, 0);
+            this._collider = new BABYLON.Collider();
+            this._oldPositionForCollisions = new BABYLON.Vector3(0, 0, 0);
+            this._diffPositionForCollisions = new BABYLON.Vector3(0, 0, 0);
+            this._newPositionForCollisions = new BABYLON.Vector3(0, 0, 0);
             // Cache
             this._localScaling = BABYLON.Matrix.Zero();
             this._localRotation = BABYLON.Matrix.Zero();
@@ -48,6 +58,7 @@ var BABYLON;
             this._pivotMatrix = BABYLON.Matrix.Identity();
             this._isDisposed = false;
             this._renderId = 0;
+            this._intersectionsInProgress = new Array();
 
             scene.meshes.push(this);
         }
@@ -109,6 +120,9 @@ var BABYLON;
         };
 
         AbstractMesh.prototype.getBoundingInfo = function () {
+            if (!this._boundingInfo) {
+                this._updateBoundingInfo();
+            }
             return this._boundingInfo;
         };
 
@@ -514,12 +528,35 @@ var BABYLON;
             this.getScene().getPhysicsEngine()._applyImpulse(this, force, contactPoint);
         };
 
-        AbstractMesh.prototype.setPhysicsLinkWith = function (otherMesh, pivot1, pivot2) {
+        AbstractMesh.prototype.setPhysicsLinkWith = function (otherMesh, pivot1, pivot2, options) {
             if (!this._physicImpostor) {
                 return;
             }
 
-            this.getScene().getPhysicsEngine()._createLink(this, otherMesh, pivot1, pivot2);
+            this.getScene().getPhysicsEngine()._createLink(this, otherMesh, pivot1, pivot2, options);
+        };
+
+        AbstractMesh.prototype.updatePhysicsBodyPosition = function () {
+            if (!this._physicImpostor) {
+                return;
+            }
+            this.getScene().getPhysicsEngine()._updateBodyPosition(this);
+        };
+
+        // Collisions
+        AbstractMesh.prototype.moveWithCollisions = function (velocity) {
+            var globalPosition = this.getAbsolutePosition();
+
+            globalPosition.subtractFromFloatsToRef(0, this.ellipsoid.y, 0, this._oldPositionForCollisions);
+            this._oldPositionForCollisions.addInPlace(this.ellipsoidOffset);
+            this._collider.radius = this.ellipsoid;
+
+            this.getScene()._getNewPosition(this._oldPositionForCollisions, velocity, this._collider, 3, this._newPositionForCollisions, this);
+            this._newPositionForCollisions.subtractToRef(this._oldPositionForCollisions, this._diffPositionForCollisions);
+
+            if (this._diffPositionForCollisions.length() > BABYLON.Engine.CollisionsEpsilon) {
+                this.position.addInPlace(this._diffPositionForCollisions);
+            }
         };
 
         // Submeshes octree
@@ -700,12 +737,24 @@ var BABYLON;
                 this.setPhysicsState(BABYLON.PhysicsEngine.NoImpostor);
             }
 
+            for (index = 0; index < this._intersectionsInProgress.length; index++) {
+                var other = this._intersectionsInProgress[index];
+
+                var pos = other._intersectionsInProgress.indexOf(this);
+                other._intersectionsInProgress.splice(pos, 1);
+            }
+
+            this._intersectionsInProgress = [];
+
             // SubMeshes
             this.releaseSubMeshes();
 
             // Remove from scene
             var index = this.getScene().meshes.indexOf(this);
-            this.getScene().meshes.splice(index, 1);
+            if (index != -1) {
+                // Remove from the scene if mesh found
+                this.getScene().meshes.splice(index, 1);
+            }
 
             if (!doNotRecurse) {
                 for (index = 0; index < this.getScene().particleSystems.length; index++) {

@@ -42,7 +42,10 @@
             this.label2 = new System.Windows.Forms.Label();
             this.chkCopyTextures = new System.Windows.Forms.CheckBox();
             this.groupBox1 = new System.Windows.Forms.GroupBox();
+            this.chkAutoSave = new System.Windows.Forms.CheckBox();
             this.chkHidden = new System.Windows.Forms.CheckBox();
+            this.butExportAndRun = new System.Windows.Forms.Button();
+            this.chkOnlySelected = new System.Windows.Forms.CheckBox();
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox2)).BeginInit();
             this.groupBox1.SuspendLayout();
             this.SuspendLayout();
@@ -52,7 +55,7 @@
             this.butExport.Anchor = System.Windows.Forms.AnchorStyles.Top;
             this.butExport.Enabled = false;
             this.butExport.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.butExport.Location = new System.Drawing.Point(313, 153);
+            this.butExport.Location = new System.Drawing.Point(211, 153);
             this.butExport.Name = "butExport";
             this.butExport.Size = new System.Drawing.Size(197, 27);
             this.butExport.TabIndex = 0;
@@ -175,6 +178,8 @@
             // 
             this.groupBox1.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left) 
             | System.Windows.Forms.AnchorStyles.Right)));
+            this.groupBox1.Controls.Add(this.chkOnlySelected);
+            this.groupBox1.Controls.Add(this.chkAutoSave);
             this.groupBox1.Controls.Add(this.chkHidden);
             this.groupBox1.Controls.Add(this.label1);
             this.groupBox1.Controls.Add(this.chkCopyTextures);
@@ -188,6 +193,17 @@
             this.groupBox1.TabIndex = 13;
             this.groupBox1.TabStop = false;
             // 
+            // chkAutoSave
+            // 
+            this.chkAutoSave.AutoSize = true;
+            this.chkAutoSave.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.chkAutoSave.Location = new System.Drawing.Point(196, 104);
+            this.chkAutoSave.Name = "chkAutoSave";
+            this.chkAutoSave.Size = new System.Drawing.Size(130, 17);
+            this.chkAutoSave.TabIndex = 14;
+            this.chkAutoSave.Text = "Auto save 3ds Max file";
+            this.chkAutoSave.UseVisualStyleBackColor = true;
+            // 
             // chkHidden
             // 
             this.chkHidden.AutoSize = true;
@@ -199,11 +215,36 @@
             this.chkHidden.Text = "Export hidden objects";
             this.chkHidden.UseVisualStyleBackColor = true;
             // 
+            // butExportAndRun
+            // 
+            this.butExportAndRun.Anchor = System.Windows.Forms.AnchorStyles.Top;
+            this.butExportAndRun.Enabled = false;
+            this.butExportAndRun.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.butExportAndRun.Location = new System.Drawing.Point(414, 153);
+            this.butExportAndRun.Name = "butExportAndRun";
+            this.butExportAndRun.Size = new System.Drawing.Size(197, 27);
+            this.butExportAndRun.TabIndex = 14;
+            this.butExportAndRun.Text = "Export && Run";
+            this.butExportAndRun.UseVisualStyleBackColor = true;
+            this.butExportAndRun.Click += new System.EventHandler(this.butExportAndRun_Click);
+            // 
+            // chkOnlySelected
+            // 
+            this.chkOnlySelected.AutoSize = true;
+            this.chkOnlySelected.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.chkOnlySelected.Location = new System.Drawing.Point(362, 81);
+            this.chkOnlySelected.Name = "chkOnlySelected";
+            this.chkOnlySelected.Size = new System.Drawing.Size(118, 17);
+            this.chkOnlySelected.TabIndex = 15;
+            this.chkOnlySelected.Text = "Export only selected";
+            this.chkOnlySelected.UseVisualStyleBackColor = true;
+            // 
             // ExporterForm
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(823, 551);
+            this.Controls.Add(this.butExportAndRun);
             this.Controls.Add(this.groupBox1);
             this.Controls.Add(this.pictureBox2);
             this.Controls.Add(this.butCancel);
@@ -215,6 +256,8 @@
             this.Name = "ExporterForm";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
             this.Text = "Babylon.js - Export scene to .babylon file";
+            this.Activated += new System.EventHandler(this.ExporterForm_Activated);
+            this.Deactivate += new System.EventHandler(this.ExporterForm_Deactivate);
             this.FormClosed += new System.Windows.Forms.FormClosedEventHandler(this.ExporterForm_FormClosed);
             this.Load += new System.EventHandler(this.ExporterForm_Load);
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox2)).EndInit();
@@ -241,5 +284,8 @@
         private System.Windows.Forms.CheckBox chkCopyTextures;
         private System.Windows.Forms.GroupBox groupBox1;
         private System.Windows.Forms.CheckBox chkHidden;
+        private System.Windows.Forms.CheckBox chkAutoSave;
+        private System.Windows.Forms.Button butExportAndRun;
+        private System.Windows.Forms.CheckBox chkOnlySelected;
     }
 }

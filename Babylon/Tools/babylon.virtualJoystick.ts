@@ -72,7 +72,7 @@ module BABYLON {
 
             // injecting a canvas element on top of the canvas 3D game
             if (!VirtualJoystick.vjCanvas) {
-                window.addEventListener("resize", function () {
+                window.addEventListener("resize", () => {
                     VirtualJoystick.vjCanvasWidth = window.innerWidth;
                     VirtualJoystick.vjCanvasHeight = window.innerHeight;
                     VirtualJoystick.vjCanvas.width = VirtualJoystick.vjCanvasWidth;
@@ -239,8 +239,6 @@ module BABYLON {
                 case JoystickAxis.X:
                 case JoystickAxis.Y:
                 case JoystickAxis.Z:
-                    this._axisTargetedByLeftAndRight = axis;
-                    break;
                     this._axisTargetedByLeftAndRight = axis;
                     break;
                 default:
